@@ -1,12 +1,92 @@
-# Jupyter Notebook
-.ipynb_checkpoints
-
+# ── Python ─────────────────────────────────────────────────────────────────────
 __pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
 
-### Vim ###
-# Swap
+# ── Virtual environments ────────────────────────────────────────────────────────
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ── Jupyter ─────────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ── Dataset — raw files (large, downloaded via download_dataset.py) ─────────────
+data/cubicasa5k/cubicasa5k/high_quality/
+data/cubicasa5k/cubicasa5k/high_quality_architectural/
+data/cubicasa5k/cubicasa5k/colorful/
+data/cubicasa5k/cubicasa5k/*.txt
+data/cubicasa5k/cubicasa5k/
+*.zip
+*.tar.gz
+*.tar.bz2
+
+# ── LMDB databases (generated, ~105 GB) ────────────────────────────────────────
+data/cubicasa5k/cubi_lmdb/
+**/cubi_lmdb/
+*.mdb
+*.ldb
+
+# ── Model weights & checkpoints ─────────────────────────────────────────────────
+*.pth
+*.pkl
+*.pt
+*.ckpt
+*.bin
+runs_cubi/
+
+# ── Logs ────────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Matplotlib / PDF outputs ─────────────────────────────────────────────────────
+*.pdf
+
+# ── Kaggle credentials (never commit!) ──────────────────────────────────────────
+kaggle.json
+.kaggle/
+
+# ── OS junk ─────────────────────────────────────────────────────────────────────
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+
+# ── IDE / editor ────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
 [._]*.s[a-v][a-z]
 [._]*.sw[a-p]
 [._]s[a-rt-v][a-z]
 [._]ss[a-gi-z]
 [._]sw[a-p]
+
+# ── Build / dist ────────────────────────────────────────────────────────────────
+build/
+dist/
+*.egg-info/
+.eggs/
+

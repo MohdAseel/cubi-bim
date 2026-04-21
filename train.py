@@ -30,6 +30,10 @@ from tensorboardX import SummaryWriter
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import matplotlib.pyplot as plt
 
+# ── Device selection: use CUDA if available, fall back to CPU ──────────────────
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"[INFO] Training on device: {device}")
+
 
 def train(args, log_dir, writer, logger):
 
@@ -72,12 +76,13 @@ def train(args, log_dir, writer, logger):
     # Setup Model
     logging.info('Loading model...')
     input_slice = [21, 12, 11]
+    use_cuda = torch.cuda.is_available()
     if args.arch == 'hg_furukawa_original':
         model = get_model(args.arch, 51)
-        criterion = UncertaintyLoss(input_slice=input_slice)
+        criterion = UncertaintyLoss(input_slice=input_slice, cuda=use_cuda)
         if args.furukawa_weights:
             logger.info("Loading furukawa model weights from checkpoint '{}'".format(args.furukawa_weights))
-            checkpoint = torch.load(args.furukawa_weights)
+            checkpoint = torch.load(args.furukawa_weights, map_location=device, weights_only=False)
             model.load_state_dict(checkpoint['model_state'])
             criterion.load_state_dict(checkpoint['criterion_state'])
 
@@ -88,12 +93,13 @@ def train(args, log_dir, writer, logger):
             nn.init.constant_(m.bias, 0)
     else:
         model = get_model(args.arch, args.n_classes)
-        criterion = UncertaintyLoss(input_slice=input_slice)
+        criterion = UncertaintyLoss(input_slice=input_slice, cuda=use_cuda)
 
-    model.cuda()
+    model.to(device)
+    criterion.to(device)
 
     # Drawing graph for TensorBoard
-    dummy = torch.zeros((2, 3, args.image_size, args.image_size)).cuda()
+    dummy = torch.zeros((2, 3, args.image_size, args.image_size)).to(device)
     model(dummy)
     writer.add_graph(model, dummy)
 
@@ -128,7 +134,7 @@ def train(args, log_dir, writer, logger):
     if args.weights is not None:
         if os.path.exists(args.weights):
             logger.info("Loading model and optimizer from checkpoint '{}'".format(args.weights))
-            checkpoint = torch.load(args.weights)
+            checkpoint = torch.load(args.weights, map_location=device, weights_only=False)
             model.load_state_dict(checkpoint['model_state'])
             criterion.load_state_dict(checkpoint['criterion_state'])
             if not args.new_hyperparams:
@@ -147,16 +153,16 @@ def train(args, log_dir, writer, logger):
         # Training
         for i, samples in tqdm(enumerate(trainloader), total=len(trainloader),
                                ncols=80, leave=False):
-            images = samples['image'].cuda(non_blocking=True)
-            labels = samples['label'].cuda(non_blocking=True)
+            images = samples['image'].to(device, non_blocking=True)
+            labels = samples['label'].to(device, non_blocking=True)
 
             outputs = model(images)
 
             loss = criterion(outputs, labels)
             lossess.append(loss.item())
-            losses = losses.append(criterion.get_loss(), ignore_index=True)
-            variances = variances.append(criterion.get_var(), ignore_index=True)
-            ss = ss.append(criterion.get_s(), ignore_index=True)
+            losses = pd.concat([losses, criterion.get_loss()], ignore_index=True)
+            variances = pd.concat([variances, criterion.get_var()], ignore_index=True)
+            ss = pd.concat([ss, criterion.get_s()], ignore_index=True)
 
             optimizer.zero_grad()
             loss.backward()
@@ -187,8 +193,8 @@ def train(args, log_dir, writer, logger):
         total_px = 0
         for i_val, samples_val in tqdm(enumerate(valloader), total=len(valloader), ncols=80, leave=False):
             with torch.no_grad():
-                images_val = samples_val['image'].cuda(non_blocking=True)
-                labels_val = samples_val['label'].cuda(non_blocking=True)
+                images_val = samples_val['image'].to(device, non_blocking=True)
+                labels_val = samples_val['label'].to(device, non_blocking=True)
 
                 outputs = model(images_val)
                 labels_val = F.interpolate(labels_val, size=outputs.shape[2:], mode='bilinear', align_corners=False)
@@ -206,9 +212,9 @@ def train(args, log_dir, writer, logger):
                 px_rooms += float(pr)
                 px_icons += float(pi)
 
-                val_losses = val_losses.append(criterion.get_loss(), ignore_index=True)
-                val_variances = val_variances.append(criterion.get_var(), ignore_index=True)
-                val_ss = val_ss.append(criterion.get_s(), ignore_index=True)
+                val_losses = pd.concat([val_losses, criterion.get_loss()], ignore_index=True)
+                val_variances = pd.concat([val_variances, criterion.get_var()], ignore_index=True)
+                val_ss = pd.concat([val_ss, criterion.get_s()], ignore_index=True)
 
         val_loss = val_losses.mean()
         # print("CNN done", val_mid-val_start)
@@ -227,7 +233,7 @@ def train(args, log_dir, writer, logger):
                 no_improvement += 1
             if no_improvement >= args.patience:
                 logger.info("No no_improvement for " + str(no_improvement) + " loading last best model and reducing learning rate.")
-                checkpoint = torch.load(log_dir+"/model_best_val_loss_var.pkl")
+                checkpoint = torch.load(log_dir+"/model_best_val_loss_var.pkl", map_location=device, weights_only=False)
                 model.load_state_dict(checkpoint['model_state'])
                 for i, p in enumerate(optimizer.param_groups):
                     optimizer.param_groups[i]['lr'] = p['lr'] * 0.1
@@ -271,8 +277,8 @@ def train(args, log_dir, writer, logger):
                         if i == 4:
                             break
 
-                        images_val = samples_val['image'].cuda(non_blocking=True)
-                        labels_val = samples_val['label'].cuda(non_blocking=True)
+                        images_val = samples_val['image'].to(device, non_blocking=True)
+                        labels_val = samples_val['label'].to(device, non_blocking=True)
 
                         if first_best:
                             # save image and label
@@ -358,13 +364,13 @@ def train(args, log_dir, writer, logger):
 
 
 if __name__ == '__main__':
-    time_stamp = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+    time_stamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     parser = argparse.ArgumentParser(description='Hyperparameters')
     parser.add_argument('--arch', nargs='?', type=str, default='hg_furukawa_original',
                         help='Architecture to use.')
     parser.add_argument('--optimizer', nargs='?', type=str, default='adam-patience-previous-best',
                         help='Optimizer to use [\'adam, sgd\']')
-    parser.add_argument('--data-path', nargs='?', type=str, default='data/cubicasa5k/',
+    parser.add_argument('--data-path', nargs='?', type=str, default='data/cubicasa5k/cubicasa5k/',
                         help='Path to data directory')
     parser.add_argument('--n-classes', nargs='?', type=int, default=44,
                         help='# of the epochs')

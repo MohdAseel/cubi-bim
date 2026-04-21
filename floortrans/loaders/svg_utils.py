@@ -114,16 +114,16 @@ def get_icon(ee):
 
     if parent_transform is not None:
         for i in range(len(X)):
-            v = np.matrix([[X[i]], [Y[i]], [1]])
+            v = np.array([[X[i]], [Y[i]], [1]])
             vv = np.matmul(M, v)
-            new_x, new_y, _ = np.round(np.matmul(M_p, vv))
+            new_x, new_y, _ = np.round(np.matmul(M_p, vv)).flatten()
             X[i] = new_x
             Y[i] = new_y
     else:
         for i in range(len(X)):
-            v = np.matrix([[X[i]], [Y[i]], [1]])
+            v = np.array([[X[i]], [Y[i]], [1]])
             vv = np.matmul(M, v)
-            new_x, new_y, _ = np.round(vv)
+            new_x, new_y, _ = np.round(vv).flatten()
             X[i] = new_x
             Y[i] = new_y
 
@@ -562,7 +562,7 @@ class PolygonWall(Wall):
     def get_width(self, X, Y, direction):
         _, _, p1, p2 = self._get_min_points(X, Y)
 
-        if direction is 'H':
+        if direction == 'H':
             return (abs(p1[0][1] - p1[1][1]) + abs(p2[0][1] - p2[1][1])) / 2
         elif 'V':
             return (abs(p1[0][0] - p1[1][0]) + abs(p2[0][0] - p2[1][0])) / 2
@@ -634,7 +634,7 @@ class PolygonWall(Wall):
             return None
 
     def _get_min_points(self, X, Y):
-        assert len(X) is 4 and len(Y) is 4
+        assert len(X) == 4 and len(Y) == 4
         length = len(X)
         min_dist1 = np.inf
         min_dist2 = np.inf

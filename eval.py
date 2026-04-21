@@ -11,6 +11,10 @@ from floortrans.loaders.augmentations import DictToTensor, Compose
 from floortrans.metrics import get_evaluation_tensors, runningScore
 from tqdm import tqdm
 
+# ── Device selection: use CUDA if available, fall back to CPU ──────────────────
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"[INFO] Evaluating on device: {device}")
+
 room_cls = ["Background", "Outdoor", "Wall", "Kitchen", "Living Room", "Bedroom", "Bath", "Hallway", "Railing", "Storage", "Garage", "Other rooms"]
 icon_cls = ["Empty", "Window", "Door", "Closet", "Electr. Appl.", "Toilet", "Sink", "Sauna bench", "Fire Place", "Bathtub", "Chimney"]
 
@@ -45,7 +49,7 @@ def evaluate(args, log_dir, writer, logger):
     normal_set = FloorplanSVG(args.data_path, 'test.txt', format='lmdb', lmdb_folder='cubi_lmdb/', augmentations=Compose([DictToTensor()]))
     data_loader = data.DataLoader(normal_set, batch_size=1, num_workers=0)
 
-    checkpoint = torch.load(args.weights)
+    checkpoint = torch.load(args.weights, map_location=device, weights_only=False)
     # Setup Model
     model = get_model(args.arch, 51)
     n_classes = args.n_classes
@@ -54,7 +58,7 @@ def evaluate(args, log_dir, writer, logger):
     model.upsample = torch.nn.ConvTranspose2d(n_classes, n_classes, kernel_size=4, stride=4)
     model.load_state_dict(checkpoint['model_state'])
     model.eval()
-    model.cuda()
+    model.to(device)
 
     score_seg_room = runningScore(12)
     score_seg_icon = runningScore(11)
@@ -81,11 +85,11 @@ def evaluate(args, log_dir, writer, logger):
 
 
 if __name__ == '__main__':
-    time_stamp = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+    time_stamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     parser = argparse.ArgumentParser(description='Settings for evaluation')
     parser.add_argument('--arch', nargs='?', type=str, default='hg_furukawa_original',
                         help='Architecture to use [\'hg_furukawa_original, segnet etc\']')
-    parser.add_argument('--data-path', nargs='?', type=str, default='data/cubicasa5k/',
+    parser.add_argument('--data-path', nargs='?', type=str, default='data/cubicasa5k/cubicasa5k/',
                         help='Path to data directory')
     parser.add_argument('--n-classes', nargs='?', type=int, default=44,
                         help='# of the epochs')

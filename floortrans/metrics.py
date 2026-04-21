@@ -6,11 +6,14 @@ from copy import deepcopy
 import numpy as np
 import math
 import torch
-from torch.nn.functional import sigmoid, softmax, interpolate
+from torch.nn.functional import softmax, interpolate
 from skimage import draw
 from floortrans import post_prosessing
 from floortrans.loaders.augmentations import RotateNTurns
 from floortrans.plotting import shp_mask
+
+# ── Device selection: use CUDA if available, fall back to CPU ──────────────────
+_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class runningScore(object):
@@ -94,10 +97,10 @@ def get_px_acc(pred, target, input_slice, sub=1):
     pred_arr = torch.split(pred, input_slice)
     heatmap_pred, rooms_pred, icons_pred = pred_arr
     rooms_pred = softmax(rooms_pred, 0).argmax(0)
-    rooms_target = target[input_slice[0]].type(torch.cuda.LongTensor) - sub
+    rooms_target = target[input_slice[0]].long() - sub
     rooms_pos = torch.eq(rooms_pred, rooms_target).sum()
 
-    icons_target = target[input_slice[0]+1].type(torch.cuda.LongTensor) - sub
+    icons_target = target[input_slice[0]+1].long() - sub
     icons_pred = softmax(icons_pred, 0).argmax(0)
     icons_pos = torch.eq(icons_pred, icons_target).sum()
 
@@ -130,7 +133,7 @@ def polygons_to_tensor(polygons_val, types_val, room_polygons_val, room_types_va
 
 
 def get_evaluation_tensors(val, model, split, logger, rotate=True, n_classes=44):
-    images_val = val['image'].cuda()
+    images_val = val['image'].to(_device)
     labels_val = val['label']
     height = labels_val.shape[2]
     width = labels_val.shape[3]

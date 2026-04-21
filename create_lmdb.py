@@ -11,6 +11,7 @@ from floortrans.loaders.svg_loader import FloorplanSVG
 
 def main(args, logger):
     logger.info("Opening database...")
+    os.makedirs(args.lmdb, exist_ok=True)
     env = lmdb.open(args.lmdb, map_size=int(200e9))
 
     logger.info("Creating data loader...")
@@ -39,13 +40,13 @@ def main(args, logger):
 
 
 if __name__ == '__main__':
-    time_stamp = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+    time_stamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     parser = argparse.ArgumentParser(description='Script for creating lmdb database.')
     parser.add_argument('--txt', nargs='?', type=str, default='', required=True,
                         help='Path to text file containing file paths')
     parser.add_argument('--lmdb', nargs='?', type=str,
                         default='data/cubicasa5k/cubi_lmdb/', help='Path to lmdb')
-    parser.add_argument('--data-path', nargs='?', type=str, default='data/cubicasa5k/',
+    parser.add_argument('--data-path', nargs='?', type=str, default='data/cubicasa5k/cubicasa5k/',
                         help='Path to data directory')
     parser.add_argument('--log-path', nargs='?', type=str, default='runs_cubi/',
                         help='Path to log directory')
