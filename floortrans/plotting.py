@@ -1,10 +1,33 @@
 import matplotlib.pyplot as plt
 from matplotlib import colors, cm
+import matplotlib
 import matplotlib.path as mplp
 import numpy as np
 import torch
 from skimage import draw
 from shapely.geometry import Polygon, Point
+
+
+def _register_cmap_compat(cmap):
+    """Register colormap on both older and newer Matplotlib versions."""
+    if hasattr(matplotlib, 'colormaps') and hasattr(matplotlib.colormaps, 'register'):
+        try:
+            matplotlib.colormaps.register(cmap, force=True)
+        except TypeError:
+            # Older signatures may not support force.
+            try:
+                matplotlib.colormaps.register(cmap)
+            except ValueError:
+                pass
+        except ValueError:
+            pass
+        return
+
+    if hasattr(cm, 'register_cmap'):
+        try:
+            cm.register_cmap(cmap=cmap)
+        except ValueError:
+            pass
 
 
 def discrete_cmap_furukawa():
@@ -14,14 +37,14 @@ def discrete_cmap_furukawa():
              '#fccde5', '#80b1d3', '#d9d9d9', '#fb8072', '#577a4d',
              'white', '#000000', '#e31a1c']
     cmap3 = colors.ListedColormap(cpool, 'rooms_furukawa')
-    cm.register_cmap(cmap=cmap3)
+    _register_cmap_compat(cmap3)
 
     cpool = ['#ede676', '#8dd3c7', '#b15928', '#fdb462', '#ffff99',
              '#fccde5', '#80b1d3', '#d9d9d9', '#fb8072', '#696969',
              '#577a4d', '#e31a1c', '#42ef59', '#8c595a', '#3131e5',
              '#48e0e6', 'white']
     cmap3 = colors.ListedColormap(cpool, 'icons_furukawa')
-    cm.register_cmap(cmap=cmap3)
+    _register_cmap_compat(cmap3)
 
 
 def drawJunction(h, point, point_type, width, height):
@@ -588,13 +611,13 @@ def discrete_cmap():
              '#fccde5', '#80b1d3', '#808080', '#fb8072', '#696969',
              '#577a4d', '#ffffb3']
     cmap3 = colors.ListedColormap(cpool, 'rooms')
-    cm.register_cmap(cmap=cmap3)
+    _register_cmap_compat(cmap3)
 
     cpool = ['#DCDCDC', '#8dd3c7', '#b15928', '#fdb462', '#ffff99',
              '#fccde5', '#80b1d3', '#808080', '#fb8072', '#696969',
              '#577a4d']
     cmap3 = colors.ListedColormap(cpool, 'icons')
-    cm.register_cmap(cmap=cmap3)
+    _register_cmap_compat(cmap3)
 
     """create a colormap with N (N<15) discrete colors and register it"""
     # define individual colors as hex values
@@ -602,13 +625,13 @@ def discrete_cmap():
              '#fccde5', '#80b1d3', '#808080', '#fb8072', '#696969',
              '#577a4d', '#ffffb3', 'd3d5d7']
     cmap3 = colors.ListedColormap(cpool, 'rooms_furu')
-    cm.register_cmap(cmap=cmap3)
+    _register_cmap_compat(cmap3)
 
     cpool = ['#DCDCDC', '#8dd3c7', '#b15928', '#fdb462', '#ffff99',
              '#fccde5', '#80b1d3', '#808080', '#fb8072', '#696969',
              '#577a4d']
     cmap3 = colors.ListedColormap(cpool, 'rooms_furu')
-    cm.register_cmap(cmap=cmap3)
+    _register_cmap_compat(cmap3)
 
 
 def segmentation_plot(rooms_pred, icons_pred, rooms_label, icons_label):

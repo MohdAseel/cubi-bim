@@ -26,6 +26,8 @@ def _suppress_stderr():
 
 
 class FloorplanSVG(Dataset):
+    _LMDB_ENVS = {}
+
     def __init__(self, data_folder, data_file, is_transform=True,
                  augmentations=None, img_norm=True, format='txt',
                  original_size=False, lmdb_folder='cubi_lmdb/'):
@@ -104,12 +106,16 @@ class FloorplanSVG(Dataset):
 
     def get_lmdb(self, index):
         if self.lmdb is None:
-            # Lazy open for multiprocessing pickling issues (esp. on Windows)
-            self.lmdb = lmdb.open(
-                self.data_folder + self.lmdb_folder, readonly=True,
-                max_readers=8, lock=False,
-                readahead=True, meminit=False
-            )
+            # Lazy open for multiprocessing pickling issues (esp. on Windows).
+            # Reuse one env per absolute path to avoid reopening same env in one process.
+            lmdb_path = os.path.abspath(os.path.join(self.data_folder, self.lmdb_folder))
+            if lmdb_path not in FloorplanSVG._LMDB_ENVS:
+                FloorplanSVG._LMDB_ENVS[lmdb_path] = lmdb.open(
+                    lmdb_path, readonly=True,
+                    max_readers=8, lock=False,
+                    readahead=True, meminit=False
+                )
+            self.lmdb = FloorplanSVG._LMDB_ENVS[lmdb_path]
 
         key = self.folders[index].encode()
         with self.lmdb.begin(write=False) as f:

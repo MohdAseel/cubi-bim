@@ -4,29 +4,42 @@ import pickle
 import argparse
 import logging
 import numpy as np
+import torch
 from datetime import datetime
 from tqdm import tqdm
 from floortrans.loaders.svg_loader import FloorplanSVG
 
 
 def main(args, logger):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"Using device: {device}")
+    if device.type == 'cuda':
+        # cuDNN autotuner can speed up repeated tensor ops on NVIDIA GPUs.
+        torch.backends.cudnn.benchmark = True
+        logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
+
     logger.info("Opening database...")
     os.makedirs(args.lmdb, exist_ok=True)
     env = lmdb.open(args.lmdb, map_size=int(200e9))
 
     logger.info("Creating data loader...")
     data = FloorplanSVG(args.data_path, args.txt, format='txt', original_size=True)
+    if args.test:
+        logger.info("Test mode enabled: processing only first 100 images.")
 
     logger.info("Parsing data...")
+    max_items = min(100, len(data)) if args.test else len(data)
     if args.overwrite:
-        for d in tqdm(data):
+        for i in tqdm(range(max_items), total=max_items):
+            d = data[i]
             key = d['folder']
             logger.info("Adding " + key)
             with env.begin(write=True, buffers=True) as txn:
                 txn.put(key.encode('ascii'), pickle.dumps(d))
     else:
         folders = np.genfromtxt(args.data_path + args.txt, dtype='str')
-        for i, f in tqdm(enumerate(folders), total=len(folders)):
+        max_items = min(100, len(folders)) if args.test else len(folders)
+        for i, f in tqdm(enumerate(folders[:max_items]), total=max_items):
             with env.begin(write=True, buffers=True) as txn:
                 elem = txn.get(f.encode('ascii'))
                 if not elem:
@@ -52,6 +65,8 @@ if __name__ == '__main__':
                         help='Path to log directory')
     parser.add_argument('--overwrite', nargs='?', type=bool, default=False,
                         const=True, help='Overwrite existing data')
+    parser.add_argument('--test', action='store_true',
+                        help='Process only first 100 images for quick testing')
     args = parser.parse_args()
 
     log_dir = args.log_path + '/' + time_stamp + '/'

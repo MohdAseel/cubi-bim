@@ -92,35 +92,35 @@ class UncertaintyLoss(Module):
         return w_mse_loss_total
 
     def get_loss(self):
-        d = {'total loss': [self.loss.data],
-             'room loss': [self.loss_rooms.data],
-             'icon loss': [self.loss_icons.data],
-             'heatmap loss': [self.loss_heatmap.data],
-             'total loss with variance': [self.loss_var.data],
-             'room loss with variance': [self.loss_rooms_var.data],
-             'icon loss with variance': [self.loss_icons_var.data],
-             'heatmap loss with variance': [self.loss_heatmap_var.data]}
+        d = {'total loss': [self.loss.detach().item()],
+             'room loss': [self.loss_rooms.detach().item()],
+             'icon loss': [self.loss_icons.detach().item()],
+             'heatmap loss': [self.loss_heatmap.detach().item()],
+             'total loss with variance': [self.loss_var.detach().item()],
+             'room loss with variance': [self.loss_rooms_var.detach().item()],
+             'icon loss with variance': [self.loss_icons_var.detach().item()],
+             'heatmap loss with variance': [self.loss_heatmap_var.detach().item()]}
         return pd.DataFrame(data=d)
 
     def get_var(self):
-        variance = torch.exp(self.log_vars.data)
-        mse_variance = torch.exp(self.log_vars_mse.data)
-        d = {'room variance': [variance[0]],
-             'icon variance': [variance[1]]}
+        variance = torch.exp(self.log_vars.detach())
+        mse_variance = torch.exp(self.log_vars_mse.detach())
+        d = {'room variance': [variance[0].item()],
+             'icon variance': [variance[1].item()]}
         for i, m in enumerate(mse_variance):
             key = 'heatmap ' + str(i)
-            d[key] = [m]
+            d[key] = [m.item()]
 
         return pd.DataFrame(data=d)
     
     def get_s(self):
-        s = self.log_vars.data
-        mse_s = self.log_vars_mse.data
-        d = {'room s': [s[0]],
-             'icon s': [s[1]]}
+        s = self.log_vars.detach()
+        mse_s = self.log_vars_mse.detach()
+        d = {'room s': [s[0].item()],
+             'icon s': [s[1].item()]}
         for i, m in enumerate(mse_s):
             key = 'heatmap s' + str(i)
-            d[key] = [m]
+            d[key] = [m.item()]
 
         return pd.DataFrame(data=d)
 

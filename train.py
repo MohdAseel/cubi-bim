@@ -30,12 +30,10 @@ from tensorboardX import SummaryWriter
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import matplotlib.pyplot as plt
 
-# ── Device selection: use CUDA if available, fall back to CPU ──────────────────
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"[INFO] Training on device: {device}")
-
 
 def train(args, log_dir, writer, logger):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"Training on device: {device}")
 
     with open(log_dir+'/args.json', 'w') as out:
         json.dump(vars(args), out, indent=4)
@@ -61,12 +59,21 @@ def train(args, log_dir, writer, logger):
     val_set = FloorplanSVG(args.data_path, 'val.txt', format='lmdb',
                            augmentations=DictToTensor(), lmdb_folder='../cubi_lmdb/')
 
+    if args.test:
+        logger.info('Test mode enabled: using only first 100 samples from train and val splits.')
+        train_set = data.Subset(train_set, list(range(min(100, len(train_set)))))
+        val_set = data.Subset(val_set, list(range(min(100, len(val_set)))))
+
     if args.debug:
         num_workers = 0
         print("In debug mode.")
         logger.info('In debug mode.')
+    elif os.name == 'nt' and device.type == 'cuda':
+        # On Windows, CUDA builds can exhaust paging file when worker processes import torch.
+        num_workers = 0
+        logger.info('Windows + CUDA detected: forcing num_workers=0 to avoid multiprocessing OOM.')
     else:
-        num_workers = 8
+        num_workers = args.num_workers
 
     trainloader = data.DataLoader(train_set, batch_size=args.batch_size,
                                   num_workers=num_workers, shuffle=True, pin_memory=torch.cuda.is_available())
@@ -408,6 +415,10 @@ if __name__ == '__main__':
     parser.add_argument('--scale', nargs='?', type=bool,
                         default=False, const=True,
                         help='Rescale to 256x256 augmentation.')
+    parser.add_argument('--num-workers', nargs='?', type=int, default=8,
+                        help='DataLoader workers (auto-forced to 0 on Windows+CUDA)')
+    parser.add_argument('--test', action='store_true',
+                        help='Use only first 100 images for quick testing')
     args = parser.parse_args()
 
     log_dir = args.log_path + '/' + time_stamp + '/'
