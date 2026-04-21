@@ -224,10 +224,7 @@ class hg_furukawa_original(nn.Module):
         So we choose bilinear upsample which supports arbitrary output sizes.
         '''
         _, _, H, W = y.size()
-        if y.shape != x.shape:
-            return F.interpolate(x, size=(H, W), mode='bilinear', align_corners=False) + y
-        else:
-            return x + y
+        return F.interpolate(x, size=(H, W), mode='bilinear', align_corners=False) + y
 
     def init_weights(self):
         # Pre-trained network weights from Human pose estimation via Convolutional Part Heatmap Regression
