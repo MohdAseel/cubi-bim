@@ -6,10 +6,23 @@ Paper: [CubiCasa5K: A Dataset and an Improved Multi-Task Model for Floorplan Ima
 The model uses the neural network architecture presented in [Raster-to-Vector: Revisiting Floorplan Transformation](https://github.com/art-programmer/FloorplanTransformation) [1]. The pre- and post-processing parts are modified to suit our dataset, but otherwise the pipeline follows the torch implementation of [1] as much as possible. Our model utilizes the multi-task uncertainty loss function presented in [Multi-Task Learning Using Uncertainty to Weigh Losses for Scene Geometry and Semantics](https://arxiv.org/abs/1705.07115). An example of our trained model's prediction can be found in the samples.ipynb file.
 
 ## Dataset
-CubiCasa5K is a large-scale floorplan image dataset containing 5000 samples annotated into over 80 floorplan object categories. The dataset annotations are performed in a dense and versatile manner by using polygons for separating the different objects. You can download the CubiCasa5K dataset from [here](https://zenodo.org/record/2613548) and extract the zip file to data/ folder.
+CubiCasa5K is a large-scale floorplan image dataset containing 5000 samples annotated into over 80 floorplan object categories. The dataset annotations are performed in a dense and versatile manner by using polygons for separating the different objects.
+
+You can download the dataset from [Kaggle](https://www.kaggle.com/datasets/qmarva/cubicasa5k) or [Zenodo](https://zenodo.org/record/2613548).
+
+A helper script is provided to download via Kaggle API:
+```bash
+python download_dataset.py
+```
 
 ## Requirements
-The model is written for Python 3.6.5 and Pytorch 1.0.0 with CUDA enabled GPU. Other dependencies Python can be found in requirements.txt file with the exception of cv2 3.1.0 ([OpenCV](https://opencv.org/)). If you want to use the Dockerfile you need to have docker and [nvidia-docker2](https://github.com/NVIDIA/nvidia-docker) installed. We use pre-built image [anibali/pytorch:cuda-9.0](https://github.com/anibali/docker-pytorch) as a starting point and install other required libraries using pip. To create the container run in the:
+This repository has been modernized to support **Python 3.10+** and **PyTorch 2.x** on both **CPU** and **CUDA** devices.
+
+Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+If you want to use the Dockerfile you need to have docker and [nvidia-docker2](https://github.com/NVIDIA/nvidia-docker) installed. We use pre-built image [anibali/pytorch:cuda-9.0](https://github.com/anibali/docker-pytorch) as a starting point and install other required libraries using pip. To create the container run in the:
 ```bash
 docker build -t cubi -f Dockerfile .
 ```

@@ -32,22 +32,21 @@ class FloorplanSVG(Dataset):
         self.img_norm = img_norm
         self.is_transform = is_transform
         self.augmentations = augmentations
-        self.get_data = None
         self.original_size = original_size
+        self.format = format
+        self.data_folder = data_folder
+        self.lmdb_folder = lmdb_folder
         self.image_file_name = '/F1_scaled.png'
         self.org_image_file_name = '/F1_original.png'
         self.svg_file_name = '/model.svg'
+        self.lmdb = None
 
         if format == 'txt':
             self.get_data = self.get_txt
-        if format == 'lmdb':
-            self.lmdb = lmdb.open(data_folder+lmdb_folder, readonly=True,
-                                  max_readers=8, lock=False,
-                                  readahead=True, meminit=False)
+        elif format == 'lmdb':
             self.get_data = self.get_lmdb
             self.is_transform = False
 
-        self.data_folder = data_folder
         # Load txt file to list
         self.folders = genfromtxt(data_folder + data_file, dtype='str')
 
@@ -104,6 +103,14 @@ class FloorplanSVG(Dataset):
         return sample
 
     def get_lmdb(self, index):
+        if self.lmdb is None:
+            # Lazy open for multiprocessing pickling issues (esp. on Windows)
+            self.lmdb = lmdb.open(
+                self.data_folder + self.lmdb_folder, readonly=True,
+                max_readers=8, lock=False,
+                readahead=True, meminit=False
+            )
+
         key = self.folders[index].encode()
         with self.lmdb.begin(write=False) as f:
             data = f.get(key)

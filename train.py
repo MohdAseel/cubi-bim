@@ -57,9 +57,9 @@ def train(args, log_dir, writer, logger):
     writer.add_text('parameters', str(vars(args)))
     logging.info('Loading data...')
     train_set = FloorplanSVG(args.data_path, 'train.txt', format='lmdb',
-                             augmentations=aug)
+                             augmentations=aug, lmdb_folder='../cubi_lmdb/')
     val_set = FloorplanSVG(args.data_path, 'val.txt', format='lmdb',
-                           augmentations=DictToTensor())
+                           augmentations=DictToTensor(), lmdb_folder='../cubi_lmdb/')
 
     if args.debug:
         num_workers = 0
@@ -69,9 +69,9 @@ def train(args, log_dir, writer, logger):
         num_workers = 8
 
     trainloader = data.DataLoader(train_set, batch_size=args.batch_size,
-                                  num_workers=num_workers, shuffle=True, pin_memory=True)
+                                  num_workers=num_workers, shuffle=True, pin_memory=torch.cuda.is_available())
     valloader = data.DataLoader(val_set, batch_size=1,
-                                num_workers=num_workers, pin_memory=True)
+                                num_workers=num_workers, pin_memory=torch.cuda.is_available())
 
     # Setup Model
     logging.info('Loading model...')

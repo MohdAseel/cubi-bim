@@ -362,7 +362,7 @@ class House:
         svg = minidom.parse(path)
         self.walls = np.empty((height, width), dtype=np.uint8)
         self.walls.fill(0)
-        self.wall_ids = np.empty((height, width), dtype=np.uint8)
+        self.wall_ids = np.empty((height, width), dtype=np.uint16)
         self.wall_ids.fill(0)
         self.icons = np.zeros((height, width), dtype=np.uint8)
         # junction_id = 0
@@ -946,10 +946,12 @@ class House:
         return newPoints
 
     def get_avg_wall_width(self):
+        if len(self.wall_objs) == 0:
+            return 0
         res = 0
-        for i, w in enumerate(self.wall_objs):
+        for w in self.wall_objs:
             res += w.max_width
-        res = res / float(i)
+        res = res / float(len(self.wall_objs))
 
         return res
 
