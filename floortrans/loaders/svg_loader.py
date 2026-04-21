@@ -1,11 +1,28 @@
 import lmdb
+import os
+import sys
 import pickle
+import contextlib
 import torch
 from torch.utils.data import Dataset
 import cv2
 import numpy as np
 from numpy import genfromtxt
 from floortrans.loaders.house import House
+
+
+@contextlib.contextmanager
+def _suppress_stderr():
+    """Redirect OS-level stderr to devnull to silence libpng/OpenCV C-level warnings."""
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    old_stderr_fd = os.dup(2)          # save a copy of fd 2
+    os.dup2(devnull_fd, 2)             # point fd 2 → /dev/null
+    os.close(devnull_fd)
+    try:
+        yield
+    finally:
+        os.dup2(old_stderr_fd, 2)      # restore fd 2
+        os.close(old_stderr_fd)
 
 
 class FloorplanSVG(Dataset):
@@ -50,7 +67,8 @@ class FloorplanSVG(Dataset):
         return sample
 
     def get_txt(self, index):
-        fplan = cv2.imread(self.data_folder + self.folders[index] + self.image_file_name)
+        with _suppress_stderr():
+            fplan = cv2.imread(self.data_folder + self.folders[index] + self.image_file_name)
         fplan = cv2.cvtColor(fplan, cv2.COLOR_BGR2RGB)  # correct color channels
         height, width, nchannel = fplan.shape
         fplan = np.moveaxis(fplan, -1, 0)
@@ -62,7 +80,8 @@ class FloorplanSVG(Dataset):
         heatmaps = house.get_heatmap_dict()
         coef_width = 1
         if self.original_size:
-            fplan = cv2.imread(self.data_folder + self.folders[index] + self.org_image_file_name)
+            with _suppress_stderr():
+                fplan = cv2.imread(self.data_folder + self.folders[index] + self.org_image_file_name)
             fplan = cv2.cvtColor(fplan, cv2.COLOR_BGR2RGB)  # correct color channels
             height_org, width_org, nchannel = fplan.shape
             fplan = np.moveaxis(fplan, -1, 0)
