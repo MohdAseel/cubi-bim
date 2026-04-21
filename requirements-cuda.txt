@@ -1,0 +1,41 @@
+# Core deep learning (CUDA build for NVIDIA RTX 4050)
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.5.1+cu121
+torchvision==0.20.1+cu121
+
+# Scientific computing
+numpy>=1.23.0
+scipy>=1.10.0
+scikit-image>=0.20.0
+
+# Data handling
+pandas>=2.0.0
+lmdb>=1.4.0
+h5py>=3.8.0
+
+# Visualization & plotting
+matplotlib>=3.7.0
+tensorboard>=2.13.0
+tensorboardX>=2.6.0
+
+# Image processing
+Pillow>=9.5.0
+opencv-python>=4.7.0
+
+# Geometry / SVG
+Shapely>=2.0.0
+svgpathtools>=1.6.0
+svgwrite>=1.4.3
+networkx>=3.1
+
+# Utilities
+tqdm>=4.65.0
+joblib>=1.2.0
+cloudpickle>=2.2.0
+dask>=2023.1.0
+
+# Jupyter (optional but kept for notebook compatibility)
+ipython>=8.12.0
+ipykernel>=6.22.0
+jupyterlab>=4.0.0
+nbformat>=5.8.0
