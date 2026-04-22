@@ -1,5 +1,13 @@
 'use strict';
 
+// ── Color helper: convert #rrggbb + 0-1 opacity to rgba() ─────────────────────
+function hexAlpha(hex, opacity) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${opacity})`;
+}
+
 // ── State ──────────────────────────────────────────────────────────────────────
 const S = {
   elements:  [],   // [{id, vertices:[[x,y]...], type, class, label, color, opacity, strokeWidth}]
@@ -66,11 +74,10 @@ function fabricAbsVerts(poly) {
 function makePoly(entry, groupVisible = true) {
   const pts   = entry.vertices.map(v => m2c(v));
   const hex   = entry.color || '#ffffff';
-  const alpha = Math.round((entry.opacity ?? 0.3) * 255).toString(16).padStart(2, '0');
   const show  = groupVisible && (entry.visible !== false);
 
   const poly = new fabric.Polygon(pts, {
-    fill:               hex + alpha,
+    fill:               hexAlpha(hex, entry.opacity ?? 0.3),
     stroke:             hex,
     strokeWidth:        entry.strokeWidth ?? 1.5,
     objectCaching:      false,
@@ -154,7 +161,7 @@ function renderLayerGroup(group, entries, groupVisible) {
         fc.setActiveObject(entry._obj);
         fc.renderAll();
         onSelect(entry._obj);
-        switchTab('props');
+        // stay on Layers tab — don't force-switch to Properties
       }
     });
 
@@ -280,10 +287,25 @@ fc.on('selection:created', e  => onSelect(e.selected?.[0]));
 fc.on('selection:updated', e  => onSelect(e.selected?.[0]));
 fc.on('selection:cleared',  () => clearPanel());
 
+// Snapshot captured on mouse:down so undo restores the state BEFORE the drag
+let _preModSnap = null;
+fc.on('mouse:down', ev => {
+  if (!ev.e.altKey && ev.target?.data) {
+    _preModSnap = {
+      elements: JSON.parse(JSON.stringify(S.elements.map(stripObj))),
+      rooms:    JSON.parse(JSON.stringify(S.rooms.map(stripObj))),
+    };
+  }
+});
+
 fc.on('object:modified', e => {
   const obj = e.target;
   if (!obj?.data) return;
-  pushHistory();
+  if (_preModSnap) {
+    S.history.push(_preModSnap);
+    if (S.history.length > 50) S.history.shift();
+    _preModSnap = null;
+  }
   const entry = obj.data;
   const absCV = fabricAbsVerts(obj);
   entry.vertices = absCV.map(([cx, cy]) => c2m({ x: cx, y: cy }));
@@ -409,10 +431,9 @@ function applyAppearance() {
   e.opacity     = pct / 100;
   e.strokeWidth = sw;
   document.getElementById('p-opacity-val').textContent = pct + '%';
-  const alpha = Math.round(e.opacity * 255).toString(16).padStart(2, '0');
   const obj = e._obj;
   if (obj) {
-    obj.set({ fill: hex + alpha, stroke: hex, strokeWidth: sw });
+    obj.set({ fill: hexAlpha(hex, e.opacity), stroke: hex, strokeWidth: sw });
     fc.renderAll();
   }
 }
@@ -552,20 +573,33 @@ document.getElementById('btn-delete').addEventListener('click', () => {
 });
 
 // ── Undo ──────────────────────────────────────────────────────────────────────
-document.getElementById('btn-undo').addEventListener('click', () => {
+function performUndo() {
   if (S.history.length === 0) return;
   const snap = S.history.pop();
   S.elements = snap.elements;
   S.rooms    = snap.rooms;
   clearPanel();
-  renderPolygons(); // already calls renderLayers()
+  renderPolygons();
+}
+
+document.getElementById('btn-undo').addEventListener('click', performUndo);
+
+document.addEventListener('keydown', ev => {
+  if ((ev.ctrlKey || ev.metaKey) && ev.key === 'z' && !ev.shiftKey) {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    ev.preventDefault();
+    performUndo();
+  }
 });
 
 // ── Toolbar: zoom ─────────────────────────────────────────────────────────────
 document.getElementById('btn-zoom-in').addEventListener('click',  () => setZoom(fc.getZoom() * 1.2));
 document.getElementById('btn-zoom-out').addEventListener('click', () => setZoom(fc.getZoom() / 1.2));
 document.getElementById('btn-100').addEventListener('click', () => {
-  fc.setViewportTransform([1, 0, 0, 1, 0, 0]);
+  const cx = fc.width / 2;
+  const cy = fc.height / 2;
+  fc.zoomToPoint(new fabric.Point(cx, cy), 1);
   fc.renderAll();
 });
 document.getElementById('btn-fit').addEventListener('click', () => {

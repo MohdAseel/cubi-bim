@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CubiCasa Floorplan Editor</title>
+  <title>CubiCasa – Floorplan Editor</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -11,21 +11,24 @@
 
   <!-- ── Toolbar ── -->
   <header id="toolbar">
+
     <div class="tb-group">
+      <span class="app-brand">CubiCasa</span>
+      <span class="sep"></span>
       <label class="btn upload-btn" title="Upload a floorplan image">
-        &#128193; Upload Image
+        ↑ Upload
         <input id="file-input" type="file" accept="image/*" hidden>
       </label>
       <span id="status-text">No image loaded</span>
     </div>
 
     <div class="tb-group tb-center">
-      <button id="btn-zoom-in"  title="Zoom in">&#43;</button>
-      <button id="btn-zoom-out" title="Zoom out">&#8722;</button>
-      <button id="btn-fit"      title="Fit to canvas">Fit</button>
-      <button id="btn-100"      title="Reset zoom">100%</button>
+      <button id="btn-zoom-in"  title="Zoom in (scroll wheel)">+</button>
+      <button id="btn-zoom-out" title="Zoom out (scroll wheel)">−</button>
+      <button id="btn-fit"      title="Fit image to viewport">Fit</button>
+      <button id="btn-100"      title="Reset to 100% zoom">100%</button>
       <span class="sep"></span>
-      <button id="btn-undo"     title="Undo last edit">&#8634; Undo</button>
+      <button id="btn-undo"     title="Undo last edit (Ctrl+Z)">↩ Undo</button>
     </div>
 
     <div class="tb-group tb-right">
@@ -39,8 +42,9 @@
         <input type="checkbox" id="tog-image" checked> Image
       </label>
       <span class="sep"></span>
-      <button id="btn-export" title="Download polygons as JSON">&#8659; Export JSON</button>
+      <button id="btn-export" title="Download all polygon data as JSON">↓ Export</button>
     </div>
+
   </header>
 
   <!-- ── Main area ── -->
@@ -53,7 +57,7 @@
         <div class="spinner"></div>
         <p>Running inference&hellip;</p>
       </div>
-      <div id="hint">Upload an image to begin</div>
+      <div id="hint">Upload a floorplan image to begin</div>
     </div>
 
     <!-- Properties + Layers panel -->
@@ -68,7 +72,7 @@
       <!-- ── PROPERTIES TAB ── -->
       <div id="tab-props" class="tab-content">
         <div id="no-sel-msg">
-          <p>&#9654; Click a polygon on the canvas to edit its properties.</p>
+          <p>Click a polygon on the canvas<br>to view and edit its properties.</p>
         </div>
 
         <div id="sel-props" class="hidden">
@@ -142,10 +146,10 @@
             <button id="btn-add-vert" class="small-btn" style="margin-top:6px">+ Add vertex</button>
           </section>
 
-          <!-- Relative position info -->
+          <!-- Relative position -->
           <section id="rel-pos-section">
             <h4>Relative Position</h4>
-            <div id="rel-pos-info" class="info-box">Select a second polygon with Shift+Click to compare.</div>
+            <div id="rel-pos-info" class="info-box">Shift+Click another polygon to compare distances.</div>
           </section>
 
           <!-- Metadata -->
@@ -157,13 +161,13 @@
                 <input type="text" id="p-type" readonly>
               </div>
               <div class="field">
-                <label>Class</label>
+                <label>Class index</label>
                 <input type="number" id="p-class" min="0">
               </div>
             </div>
           </section>
 
-          <button id="btn-delete" class="danger-btn" style="margin-top:12px;width:100%">&#128465; Delete polygon</button>
+          <button id="btn-delete" class="danger-btn" style="margin-top:12px;width:100%">Delete Polygon</button>
         </div>
       </div><!-- /tab-props -->
 
