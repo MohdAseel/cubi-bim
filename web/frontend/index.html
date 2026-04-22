@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CubiCasa Floorplan Editor</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Toolbar ── -->
+  <header id="toolbar">
+    <div class="tb-group">
+      <label class="btn upload-btn" title="Upload a floorplan image">
+        &#128193; Upload Image
+        <input id="file-input" type="file" accept="image/*" hidden>
+      </label>
+      <span id="status-text">No image loaded</span>
+    </div>
+
+    <div class="tb-group tb-center">
+      <button id="btn-zoom-in"  title="Zoom in">&#43;</button>
+      <button id="btn-zoom-out" title="Zoom out">&#8722;</button>
+      <button id="btn-fit"      title="Fit to canvas">Fit</button>
+      <button id="btn-100"      title="Reset zoom">100%</button>
+      <span class="sep"></span>
+      <button id="btn-undo"     title="Undo last edit">&#8634; Undo</button>
+    </div>
+
+    <div class="tb-group tb-right">
+      <label class="toggle-lbl" title="Show/hide element polygons">
+        <input type="checkbox" id="tog-elements" checked> Elements
+      </label>
+      <label class="toggle-lbl" title="Show/hide room fills">
+        <input type="checkbox" id="tog-rooms" checked> Rooms
+      </label>
+      <label class="toggle-lbl" title="Show/hide background image">
+        <input type="checkbox" id="tog-image" checked> Image
+      </label>
+      <span class="sep"></span>
+      <button id="btn-export" title="Download polygons as JSON">&#8659; Export JSON</button>
+    </div>
+  </header>
+
+  <!-- ── Main area ── -->
+  <div id="main">
+
+    <!-- Canvas -->
+    <div id="canvas-wrap">
+      <canvas id="c"></canvas>
+      <div id="loading" class="hidden">
+        <div class="spinner"></div>
+        <p>Running inference&hellip;</p>
+      </div>
+      <div id="hint">Upload an image to begin</div>
+    </div>
+
+    <!-- Properties panel -->
+    <aside id="props-panel">
+      <div id="no-sel-msg">
+        <p>&#9654; Click a polygon on the canvas to edit its properties.</p>
+      </div>
+
+      <div id="sel-props" class="hidden">
+        <div class="prop-header">
+          <span id="ph-type-badge" class="type-badge">wall</span>
+          <span id="ph-title">Properties</span>
+        </div>
+
+        <!-- Label -->
+        <section>
+          <h4>Label</h4>
+          <input type="text" id="p-label" placeholder="Polygon label">
+        </section>
+
+        <!-- Appearance -->
+        <section>
+          <h4>Appearance</h4>
+          <div class="row">
+            <div class="field">
+              <label>Fill color</label>
+              <input type="color" id="p-color">
+            </div>
+            <div class="field">
+              <label>Opacity <span id="p-opacity-val">30%</span></label>
+              <input type="range" id="p-opacity" min="0" max="100" value="30">
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <div class="field">
+              <label>Stroke width</label>
+              <input type="number" id="p-stroke-w" min="0" max="10" step="0.5" value="1.5">
+            </div>
+          </div>
+        </section>
+
+        <!-- Transform -->
+        <section>
+          <h4>Transform <small>(model-space px)</small></h4>
+          <div class="row">
+            <div class="field">
+              <label>X (bbox left)</label>
+              <input type="number" id="p-x" step="1">
+            </div>
+            <div class="field">
+              <label>Y (bbox top)</label>
+              <input type="number" id="p-y" step="1">
+            </div>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <div class="field">
+              <label>Width</label>
+              <input type="number" id="p-w" step="1" min="1">
+            </div>
+            <div class="field">
+              <label>Height</label>
+              <input type="number" id="p-h" step="1" min="1">
+            </div>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <div class="field">
+              <label>Rotation (°)</label>
+              <input type="number" id="p-rot" step="1" min="-180" max="180" value="0">
+            </div>
+          </div>
+        </section>
+
+        <!-- Vertices -->
+        <section id="verts-section">
+          <h4>Vertices <small>(x, y in model space)</small></h4>
+          <div id="verts-list"></div>
+          <button id="btn-add-vert" class="small-btn" style="margin-top:6px">+ Add vertex</button>
+        </section>
+
+        <!-- Relative position info -->
+        <section id="rel-pos-section">
+          <h4>Relative Position</h4>
+          <div id="rel-pos-info" class="info-box">Select a second polygon with Shift+Click to compare.</div>
+        </section>
+
+        <!-- Metadata -->
+        <section>
+          <h4>Metadata</h4>
+          <div class="row">
+            <div class="field">
+              <label>Type</label>
+              <input type="text" id="p-type" readonly>
+            </div>
+            <div class="field">
+              <label>Class</label>
+              <input type="number" id="p-class" min="0">
+            </div>
+          </div>
+        </section>
+
+        <button id="btn-delete" class="danger-btn" style="margin-top:12px;width:100%">&#128465; Delete polygon</button>
+      </div>
+    </aside>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
