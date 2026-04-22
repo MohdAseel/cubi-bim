@@ -305,6 +305,12 @@ function onSelect(obj) {
   if (!obj?.data) { clearPanel(); return; }
   S.activeEntry = obj.data;
   populatePanel(obj);
+  // highlight the matching row in the layers panel (no full re-render needed)
+  document.querySelectorAll('.layer-row').forEach(row => row.classList.remove('active'));
+  const group = S.elements.includes(obj.data) ? 'elements' : 'rooms';
+  const idx   = (group === 'elements' ? S.elements : S.rooms).indexOf(obj.data);
+  const activeRow = document.querySelector(`#layer-list-${group} .layer-row[data-idx="${idx}"]`);
+  if (activeRow) activeRow.classList.add('active');
 }
 
 function clearPanel() {
@@ -385,6 +391,7 @@ document.getElementById('p-label').addEventListener('change', () => {
   if (_suppress || !S.activeEntry) return;
   S.activeEntry.label = document.getElementById('p-label').value;
   document.getElementById('ph-title').textContent = S.activeEntry.label || 'Polygon';
+  renderLayers(); // keep layer-row label in sync
 });
 
 document.getElementById('p-class').addEventListener('change', () => {
