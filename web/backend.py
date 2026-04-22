@@ -113,18 +113,34 @@ async def predict(image: UploadFile = File(...)):
     for idx, (poly, t) in enumerate(zip(result["room_polygons"], result["room_types"])):
         cls   = int(t.get("class", 0))
         label, color = _label_and_color("room", cls)
-        coords = [
-            [float(x), float(y)]
-            for x, y in list(poly.exterior.coords)[:-1]   # drop closing duplicate
-        ]
-        rooms.append({
-            "id":       idx + len(elements),
-            "vertices": coords,
-            "type":     "room",
-            "class":    cls,
-            "label":    label,
-            "color":    color,
-        })
+
+        # Handle different Shapely geometry types (Polygon, MultiPolygon, GeometryCollection)
+        if poly.geom_type == 'Polygon':
+            polys = [poly]
+        elif hasattr(poly, 'geoms'):
+            polys = [g for g in poly.geoms if g.geom_type == 'Polygon']
+            if not polys:
+                # If no polygons, try to find them in nested multi-geometries
+                polys = []
+                for g in poly.geoms:
+                    if hasattr(g, 'geoms'):
+                        polys.extend([sub_g for sub_g in g.geoms if sub_g.geom_type == 'Polygon'])
+        else:
+            polys = []
+
+        for p_idx, p in enumerate(polys):
+            coords = [
+                [float(x), float(y)]
+                for x, y in list(p.exterior.coords)[:-1]   # drop closing duplicate
+            ]
+            rooms.append({
+                "id":       idx + len(elements) + p_idx,
+                "vertices": coords,
+                "type":     "room",
+                "class":    cls,
+                "label":    label,
+                "color":    color,
+            })
 
     return {
         "elements":   elements,

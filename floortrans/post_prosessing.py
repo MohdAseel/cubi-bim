@@ -330,13 +330,11 @@ def merge_rectangles(rectangles, room_types):
             polygon_union = unary_union(same_cls_pols)
 
             # If there are multiple polygons we split them.
-            if isinstance(polygon_union, Iterable):
-                for pol in polygon_union:
-#                     x, y = pol.boundary.coords.xy
-#                     numpy_pol = np.array([np.array(x), np.array(y)]).T
-#                     room_polygons.append(numpy_pol)
-                    room_polygons.append(pol)
-                    new_room_types.append(pol_type)
+            if hasattr(polygon_union, 'geoms'):
+                for pol in polygon_union.geoms:
+                    if pol.geom_type == 'Polygon':
+                        room_polygons.append(pol)
+                        new_room_types.append(pol_type)
                     
             else:
 #                 x, y = polygon_union.boundary.coords.xy

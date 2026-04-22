@@ -63,17 +63,20 @@ function fabricAbsVerts(poly) {
 }
 
 // ── Create a Fabric polygon from an entry ──────────────────────────────────────
-function makePoly(entry) {
+function makePoly(entry, groupVisible = true) {
   const pts   = entry.vertices.map(v => m2c(v));
   const hex   = entry.color || '#ffffff';
   const alpha = Math.round((entry.opacity ?? 0.3) * 255).toString(16).padStart(2, '0');
+  const show  = groupVisible && (entry.visible !== false);
 
   const poly = new fabric.Polygon(pts, {
     fill:               hex + alpha,
     stroke:             hex,
     strokeWidth:        entry.strokeWidth ?? 1.5,
     objectCaching:      false,
-    selectable:         true,
+    visible:            show,
+    selectable:         show,
+    evented:            show,
     hasBorders:         true,
     hasControls:        true,
     perPixelTargetFind: false,
@@ -86,14 +89,92 @@ function makePoly(entry) {
 
 // ── Render all polygons (clear old, add from state) ───────────────────────────
 function renderPolygons() {
-  // Remove all fabric objects except the image
   fc.getObjects().forEach(obj => { if (obj !== S.imgObj) fc.remove(obj); });
+  S.rooms.forEach(e    => fc.add(makePoly(e, S.showRooms)));
+  S.elements.forEach(e => fc.add(makePoly(e, S.showElements)));
+  fc.renderAll();
+  renderLayers();
+}
 
-  if (S.showRooms)    S.rooms.forEach(e    => fc.add(makePoly(e)));
-  if (S.showElements) S.elements.forEach(e => fc.add(makePoly(e)));
-
+// ── Apply group-level visibility without recreating objects ───────────────────
+function applyGroupVisibility() {
+  S.rooms.forEach(e => {
+    const show = S.showRooms && (e.visible !== false);
+    if (e._obj) e._obj.set({ visible: show, selectable: show, evented: show });
+  });
+  S.elements.forEach(e => {
+    const show = S.showElements && (e.visible !== false);
+    if (e._obj) e._obj.set({ visible: show, selectable: show, evented: show });
+  });
   fc.renderAll();
 }
+
+// ── Layers panel ───────────────────────────────────────────────────────────────
+function renderLayers() {
+  renderLayerGroup('elements', S.elements, S.showElements);
+  renderLayerGroup('rooms',    S.rooms,    S.showRooms);
+}
+
+function renderLayerGroup(group, entries, groupVisible) {
+  document.getElementById(`lg-${group}-count`).textContent = entries.length;
+  document.getElementById(`lg-${group}`).checked = groupVisible;
+
+  const list = document.getElementById(`layer-list-${group}`);
+  list.innerHTML = '';
+
+  entries.forEach((entry, idx) => {
+    const isVisible = entry.visible !== false;
+    const row = document.createElement('div');
+    row.className = 'layer-row' + (S.activeEntry === entry ? ' active' : '');
+    row.dataset.group = group;
+    row.dataset.idx   = idx;
+
+    row.innerHTML = `
+      <input type="checkbox" class="layer-vis" ${isVisible ? 'checked' : ''}
+             title="Toggle visibility" ${groupVisible ? '' : 'disabled'}>
+      <span class="layer-swatch" style="background:${entry.color || '#888'}"></span>
+      <span class="layer-label">${entry.label || 'Polygon'}</span>
+      <span class="type-badge ${entry.type}">${entry.type}</span>
+    `;
+
+    const cb = row.querySelector('.layer-vis');
+    cb.addEventListener('change', ev => {
+      ev.stopPropagation();
+      entry.visible = cb.checked;
+      const show = groupVisible && entry.visible;
+      if (entry._obj) {
+        entry._obj.set({ visible: show, selectable: show, evented: show });
+        fc.renderAll();
+      }
+    });
+
+    row.addEventListener('click', ev => {
+      if (ev.target === cb) return;
+      if (entry._obj && entry._obj.visible) {
+        fc.setActiveObject(entry._obj);
+        fc.renderAll();
+        onSelect(entry._obj);
+        switchTab('props');
+      }
+    });
+
+    list.appendChild(row);
+  });
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.panel-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(el => {
+    el.classList.toggle('hidden', el.id !== `tab-${name}`);
+  });
+}
+
+document.querySelectorAll('.panel-tab').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
 
 // ── Recreate just one polygon, re-selecting it ────────────────────────────────
 function reRenderEntry(entry) {
@@ -185,8 +266,8 @@ document.getElementById('file-input').addEventListener('change', async e => {
   document.getElementById('status-text').textContent =
     `${data.elements.length} elements · ${data.rooms.length} rooms`;
 
-  data.elements.forEach(e => { e.opacity = 0.35; e.strokeWidth = 1.5; });
-  data.rooms.forEach(r    => { r.opacity = 0.20; r.strokeWidth = 1.0; });
+  data.elements.forEach(e => { e.opacity = 0.35; e.strokeWidth = 1.5; e.visible = true; });
+  data.rooms.forEach(r    => { r.opacity = 0.20; r.strokeWidth = 1.0; r.visible = true; });
 
   S.elements = data.elements;
   S.rooms    = data.rooms;
@@ -516,20 +597,50 @@ fc.on('mouse:move', ev => {
 });
 fc.on('mouse:up', () => { _panning = false; fc.selection = true; });
 
-// ── Toolbar: layer toggles ────────────────────────────────────────────────────
-document.getElementById('tog-elements').addEventListener('change', e => {
-  S.showElements = e.target.checked;
-  renderPolygons();
-});
-document.getElementById('tog-rooms').addEventListener('change', e => {
-  S.showRooms = e.target.checked;
-  renderPolygons();
-});
+// ── Toolbar: layer toggles (kept in sync with Layers-panel group checkboxes) ──
+function setGroupVisible(group, visible) {
+  if (group === 'elements') S.showElements = visible;
+  else                      S.showRooms    = visible;
+  // sync toolbar and layers-panel checkboxes
+  document.getElementById(`tog-${group}`).checked = visible;
+  document.getElementById(`lg-${group}`).checked  = visible;
+  applyGroupVisibility();
+  renderLayers(); // refresh disabled state on individual checkboxes
+}
+
+document.getElementById('tog-elements').addEventListener('change', e =>
+  setGroupVisible('elements', e.target.checked));
+document.getElementById('tog-rooms').addEventListener('change', e =>
+  setGroupVisible('rooms', e.target.checked));
 document.getElementById('tog-image').addEventListener('change', e => {
   S.showImage = e.target.checked;
   if (S.imgObj) S.imgObj.set('visible', S.showImage);
   fc.renderAll();
 });
+
+// ── Layers-panel: group toggles ───────────────────────────────────────────────
+document.getElementById('lg-elements').addEventListener('change', e =>
+  setGroupVisible('elements', e.target.checked));
+document.getElementById('lg-rooms').addEventListener('change', e =>
+  setGroupVisible('rooms', e.target.checked));
+
+// ── Layers-panel: All / None bulk buttons ─────────────────────────────────────
+function setBulkVisibility(group, visible) {
+  const entries = group === 'elements' ? S.elements : S.rooms;
+  const groupVisible = group === 'elements' ? S.showElements : S.showRooms;
+  entries.forEach(e => {
+    e.visible = visible;
+    const show = groupVisible && visible;
+    if (e._obj) e._obj.set({ visible: show, selectable: show, evented: show });
+  });
+  fc.renderAll();
+  renderLayers();
+}
+
+document.getElementById('lg-elements-all').addEventListener('click',  () => setBulkVisibility('elements', true));
+document.getElementById('lg-elements-none').addEventListener('click', () => setBulkVisibility('elements', false));
+document.getElementById('lg-rooms-all').addEventListener('click',     () => setBulkVisibility('rooms', true));
+document.getElementById('lg-rooms-none').addEventListener('click',    () => setBulkVisibility('rooms', false));
 
 // ── Shift+click: relative position between two selected polygons ───────────────
 let _firstSel = null;
