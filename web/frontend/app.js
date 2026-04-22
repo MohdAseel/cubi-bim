@@ -541,6 +541,7 @@ document.getElementById('btn-delete').addEventListener('click', () => {
   S.rooms    = S.rooms.filter(x => x !== e);
   clearPanel();
   fc.renderAll();
+  renderLayers();
 });
 
 // ── Undo ──────────────────────────────────────────────────────────────────────
@@ -550,7 +551,7 @@ document.getElementById('btn-undo').addEventListener('click', () => {
   S.elements = snap.elements;
   S.rooms    = snap.rooms;
   clearPanel();
-  renderPolygons();
+  renderPolygons(); // already calls renderLayers()
 });
 
 // ── Toolbar: zoom ─────────────────────────────────────────────────────────────
