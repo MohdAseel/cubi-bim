@@ -491,7 +491,6 @@ def get_opening_polygon(heatmaps, wall_polygons, icons_seg, wall_points, wall_li
         continue
 
     for index, door_type in enumerate(door_types):
-        break
         door_index = door_type[0]
         if door_index in invalid_doors:
             continue
@@ -503,9 +502,7 @@ def get_opening_polygon(heatmaps, wall_polygons, icons_seg, wall_points, wall_li
             other_door_index = other_door_type[0]
             if other_door_index in door_conflict_map[door_index]:
                 invalid_doors[other_door_index] = True
-                pass
-            continue
-        continue
+
 
     filtered_door_lines = []
     filtered_door_types = []
@@ -763,14 +760,8 @@ def point_inside_polygon(p, polygon):
 def get_wall_seg(wall_polygons, size):
     res = np.zeros(size)
     for pol in wall_polygons:
-        jj, ii = draw.polygon(pol[:, 1], pol[:, 0])
-        j = []
-        i = []
-        for indx in range(len(jj)):
-            if jj[indx] < size[0] and ii[indx] < size[1]:
-                j.append(jj[indx])
-                i.append(ii[indx])
-        res[j, i] = 1
+        jj, ii = draw.polygon(pol[:, 1], pol[:, 0], shape=size)
+        res[jj, ii] = 1
 
     return res
 

@@ -7,7 +7,7 @@ import numpy as np
 import math
 import torch
 from torch.nn.functional import softmax, interpolate
-from skimage import draw
+from skimage import draw, transform
 from floortrans import post_prosessing
 from floortrans.loaders.augmentations import RotateNTurns
 from floortrans.plotting import shp_mask
@@ -126,7 +126,7 @@ def polygons_to_tensor(polygons_val, types_val, room_polygons_val, room_types_va
             d = split[0]
         else:
             d = 0
-        jj, ii = draw.polygon(polygons_val[i][:, 1], polygons_val[i][:, 0])
+        jj, ii = draw.polygon(polygons_val[i][:, 1], polygons_val[i][:, 0], shape=ten.shape[1:])
         ten[pol_type['class'] + d][jj, ii] = 1
 
     return ten

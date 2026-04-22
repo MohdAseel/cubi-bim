@@ -17,7 +17,6 @@ class UncertaintyLoss(Module):
         self.loss_heatmap = None
         self.mask = mask
         self.sub = sub
-        self.cuda = cuda
         # Create parameters on CPU first; they will be moved with .to(device)
         self.log_vars = Parameter(torch.tensor([0, 0], requires_grad=True, dtype=torch.float32))
         self.log_vars_mse = Parameter(torch.zeros(input_slice[0], requires_grad=True, dtype=torch.float32))
@@ -40,13 +39,8 @@ class UncertaintyLoss(Module):
         rooms_target = torch.squeeze(rooms_target, 1)
         icons_target = torch.squeeze(icons_target, 1)
 
-        # Segmentation labels to correct type
-        if self.cuda:
-            rooms_target = rooms_target.type(torch.cuda.LongTensor) - self.sub
-            icons_target = icons_target.type(torch.cuda.LongTensor) - self.sub
-        else:
-            rooms_target = rooms_target.type(torch.LongTensor) - self.sub
-            icons_target = icons_target.type(torch.LongTensor) - self.sub
+        rooms_target = rooms_target.long() - self.sub
+        icons_target = icons_target.long() - self.sub
 
         self.loss_rooms_var = cross_entropy(input=rooms_pred*torch.exp(-self.log_vars[0]), target=rooms_target)
         self.loss_icons_var = cross_entropy(input=icons_pred*torch.exp(-self.log_vars[1]), target=icons_target)

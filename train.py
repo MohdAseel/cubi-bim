@@ -35,9 +35,8 @@ def train(args, log_dir, writer, logger):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Training on device: {device}")
 
-    with open(log_dir+'/args.json', 'w') as out:
+    with open(log_dir+'args.json', 'w') as out:
         json.dump(vars(args), out, indent=4)
-
     # Augmentation setup
     if args.scale:
         aug = Compose([RandomChoice([RandomCropToSizeTorch(data_format='dict', size=(args.image_size, args.image_size)),
@@ -176,7 +175,6 @@ def train(args, log_dir, writer, logger):
             optimizer.step()
 
         avg_loss = np.mean(lossess)
-        avg_loss = np.inf
         loss = losses.mean()
         variance = variances.mean()
         s = ss.mean()
@@ -246,7 +244,7 @@ def train(args, log_dir, writer, logger):
                     optimizer.param_groups[i]['lr'] = p['lr'] * 0.1
                 no_improvement = 0
 
-        elif args.optimizer == 'sgd' or 'adam-scheduler':
+        elif args.optimizer in ('sgd', 'adam-scheduler'):
             scheduler.step(epoch+1)
 
         val_variance = val_variances.mean()
@@ -425,7 +423,7 @@ if __name__ == '__main__':
     writer = SummaryWriter(log_dir)
     logger = logging.getLogger('train')
     logger.setLevel(logging.DEBUG)
-    fh = logging.FileHandler(log_dir+'/train.log')
+    fh = logging.FileHandler(log_dir+'train.log')
     fh.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     fh.setFormatter(formatter)

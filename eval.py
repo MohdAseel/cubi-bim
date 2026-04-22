@@ -67,10 +67,18 @@ def evaluate(args, log_dir, writer, logger):
     with torch.no_grad():
         for count, val in tqdm(enumerate(data_loader), total=len(data_loader),
                                ncols=80, leave=False):
+            if args.num_images is not None and count >= args.num_images:
+                break
             logger.info(count)
             things = get_evaluation_tensors(val, model, split, logger, rotate=True)
 
             label, segmentation, pol_segmentation = things
+
+            if args.visualize:
+                from floortrans.plotting import segmentation_plot
+                # label[0] is rooms_gt, label[1] is icons_gt
+                # segmentation[0] is rooms_pred, segmentation[1] is icons_pred
+                segmentation_plot(segmentation[0], segmentation[1], label[0], label[1])
 
             score_seg_room.update(label[0], segmentation[0])
             score_seg_icon.update(label[1], segmentation[1])
@@ -97,6 +105,10 @@ if __name__ == '__main__':
                         help='Path to previously trained model weights file .pkl')
     parser.add_argument('--log-path', nargs='?', type=str, default='runs_cubi/',
                         help='Path to log directory')
+    parser.add_argument('--num-images', type=int, default=None,
+                        help='Number of images to evaluate')
+    parser.add_argument('--visualize', action='store_true',
+                        help='Visualize the results')
 
     args = parser.parse_args()
 
@@ -104,7 +116,7 @@ if __name__ == '__main__':
     writer = SummaryWriter(log_dir)
     logger = logging.getLogger('eval')
     logger.setLevel(logging.DEBUG)
-    fh = logging.FileHandler(log_dir+'/eval.log')
+    fh = logging.FileHandler(log_dir+'eval.log')
     fh.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     fh.setFormatter(formatter)
