@@ -72,8 +72,11 @@ class FloorplanSVG(Dataset):
 
     def get_txt(self, index):
         with _suppress_stderr():
-            fplan = cv2.imread(self.data_folder + self.folders[index] + self.image_file_name)
-        fplan = cv2.cvtColor(fplan, cv2.COLOR_BGR2RGB)  # correct color channels
+            fplan_path = self.data_folder + self.folders[index] + self.image_file_name
+            fplan = cv2.imread(fplan_path)
+            if fplan is None:
+                raise FileNotFoundError(f"Image file not found: {fplan_path}")
+            fplan = cv2.cvtColor(fplan, cv2.COLOR_BGR2RGB)  # correct color channels
         height, width, nchannel = fplan.shape
         fplan = np.moveaxis(fplan, -1, 0)
 
@@ -85,8 +88,11 @@ class FloorplanSVG(Dataset):
         coef_width = 1
         if self.original_size:
             with _suppress_stderr():
-                fplan = cv2.imread(self.data_folder + self.folders[index] + self.org_image_file_name)
-            fplan = cv2.cvtColor(fplan, cv2.COLOR_BGR2RGB)  # correct color channels
+                fplan_path_org = self.data_folder + self.folders[index] + self.org_image_file_name
+                fplan = cv2.imread(fplan_path_org)
+                if fplan is None:
+                    raise FileNotFoundError(f"Original image file not found: {fplan_path_org}")
+                fplan = cv2.cvtColor(fplan, cv2.COLOR_BGR2RGB)  # correct color channels
             height_org, width_org, nchannel = fplan.shape
             fplan = np.moveaxis(fplan, -1, 0)
             label = label.unsqueeze(0)

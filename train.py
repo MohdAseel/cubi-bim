@@ -34,6 +34,9 @@ import matplotlib.pyplot as plt
 def train(args, log_dir, writer, logger):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Training on device: {device}")
+    # Enable cuDNN auto‑tuner for faster convolutions on fixed input sizes
+    if device.type == 'cuda':
+        torch.backends.cudnn.benchmark = True
     use_amp = (device.type == 'cuda') and (not args.disable_amp)
     scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
 
@@ -71,9 +74,9 @@ def train(args, log_dir, writer, logger):
         print("In debug mode.")
         logger.info('In debug mode.')
     elif os.name == 'nt' and device.type == 'cuda':
-        # On Windows, CUDA builds can exhaust paging file when worker processes import torch.
+        # On Windows, the LMDB dataset cannot be pickled for multiprocessing workers.
         num_workers = 0
-        logger.info('Windows + CUDA detected: forcing num_workers=0 to avoid multiprocessing OOM.')
+        logger.warning('Windows detected: forcing num_workers=0 because the dataset contains non-picklable LMDB objects.')
     else:
         num_workers = args.num_workers
 
@@ -167,6 +170,8 @@ def train(args, log_dir, writer, logger):
         variances = pd.DataFrame()
         ss = pd.DataFrame()
         # Training
+        accum_steps = args.grad_accum_steps
+        optimizer.zero_grad(set_to_none=True)
         for i, samples in tqdm(enumerate(trainloader), total=len(trainloader),
                                ncols=80, leave=False):
             images = samples['image'].to(device, non_blocking=True)
@@ -174,16 +179,17 @@ def train(args, log_dir, writer, logger):
 
             with torch.amp.autocast('cuda', enabled=use_amp):
                 outputs = model(images)
-                loss = criterion(outputs, labels)
-            lossess.append(loss.item())
+                loss = criterion(outputs, labels) / accum_steps  # normalize
+            lossess.append(loss.item() * accum_steps)
             losses = pd.concat([losses, criterion.get_loss()], ignore_index=True)
             variances = pd.concat([variances, criterion.get_var()], ignore_index=True)
             ss = pd.concat([ss, criterion.get_s()], ignore_index=True)
 
-            optimizer.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            if (i + 1) % accum_steps == 0 or (i + 1) == len(trainloader):
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad(set_to_none=True)
 
         avg_loss = np.mean(lossess)
         loss = losses.mean()
@@ -395,10 +401,14 @@ if __name__ == '__main__':
                         help='# of the epochs')
     parser.add_argument('--batch-size', nargs='?', type=int, default=26,
                         help='Batch Size')
-    parser.add_argument('--max-cuda-batch-size', nargs='?', type=int, default=4,
-                        help='Safety cap for batch size when training on CUDA')
+    parser.add_argument('--max-cuda-batch-size', nargs='?', type=int, default=8,
+                        help='Safety cap for batch size when training on CUDA (increase if GPU memory permits)')
     parser.add_argument('--image-size', nargs='?', type=int, default=256,
                         help='Image size in training')
+    parser.add_argument('--grad-accum-steps', nargs='?', type=int, default=1,
+                        help='Number of steps to accumulate gradients before optimizer step (useful for larger effective batch size)')
+    parser.add_argument('--allow-multi-worker', action='store_true',
+                        help='Override Windows+CUDA safety and enable DataLoader workers >0')
     parser.add_argument('--l-rate', nargs='?', type=float, default=1e-3,
                         help='Learning Rate')
     parser.add_argument('--l-rate-var', nargs='?', type=float, default=1e-3,

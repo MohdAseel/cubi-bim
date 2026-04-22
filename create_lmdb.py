@@ -4,20 +4,12 @@ import pickle
 import argparse
 import logging
 import numpy as np
-import torch
 from datetime import datetime
 from tqdm import tqdm
 from floortrans.loaders.svg_loader import FloorplanSVG
 
 
 def main(args, logger):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logger.info(f"Using device: {device}")
-    if device.type == 'cuda':
-        # cuDNN autotuner can speed up repeated tensor ops on NVIDIA GPUs.
-        torch.backends.cudnn.benchmark = True
-        logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
-
     logger.info("Opening database...")
     os.makedirs(args.lmdb, exist_ok=True)
     env = lmdb.open(args.lmdb, map_size=int(200e9))
@@ -31,7 +23,11 @@ def main(args, logger):
     max_items = min(100, len(data)) if args.test else len(data)
     if args.overwrite:
         for i in tqdm(range(max_items), total=max_items):
-            d = data[i]
+            try:
+                d = data[i]
+            except FileNotFoundError as e:
+                logger.error(str(e))
+                raise
             key = d['folder']
             logger.info("Adding " + key)
             with env.begin(write=True, buffers=True) as txn:
@@ -44,7 +40,11 @@ def main(args, logger):
                 elem = txn.get(f.encode('ascii'))
                 if not elem:
                     logger.info("Adding " + f)
-                    elem = data[i]
+                    try:
+                        elem = data[i]
+                    except FileNotFoundError as e:
+                        logger.error(str(e))
+                        raise
                     txn.put(f.encode('ascii'), pickle.dumps(elem))
                 else:
                     logger.info(f + ' already exists')
