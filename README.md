@@ -66,3 +66,99 @@ Additional option for evaluation can be found in the script file. The results ca
 ## Todo
 - Modify create_lmdb.py to save files as uint8 (now using float32 which is the main reason why the lmdb file gets as big as over 100 gbytes).
 - Modify augmentations.py to operate with numpy arrays (the reason why it currently utilizes torch tensors is the fact that in our earlier version we applied augmentations to heatmap tensors and not to heatmap dicts which is the correct way to do it)
+
+---
+
+## Inference / Backend API
+
+`inference.py` provides a clean, self-contained backend function that takes a raw floorplan image and returns all detected polygons — ready to be consumed by a web application.
+
+### Functions
+
+#### `load_model(weights_path, device=None)`
+Loads the Furukawa hourglass checkpoint and returns an eval-mode model on the correct device (CPU or CUDA).
+
+```python
+from inference import load_model
+model = load_model("model_best_val_loss_var.pkl")
+```
+
+#### `predict_floorplan(model, image, *, heatmap_threshold=0.4, use_tta=True, device=None)`
+Full end-to-end inference pipeline:
+
+| Step | Detail |
+|------|--------|
+| **Preprocessing** | Resize longest side to 512 px, zero-pad to 512 × 512, normalise to `[0, 1]` |
+| **Inference** | 4-rotation test-time augmentation (0°, 90°, 180°, 270°) — averaged — matching `samples.ipynb` |
+| **Postprocessing** | `split_prediction` → softmax rooms/icons → `get_polygons` vector extraction |
+
+**Parameters**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `model` | `nn.Module` | — | Pre-loaded model from `load_model()` |
+| `image` | `PIL.Image` or `np.ndarray` | — | Raw floorplan image (any format: RGB, RGBA, greyscale) |
+| `heatmap_threshold` | `float` | `0.4` | Minimum heatmap confidence for polygon extraction |
+| `use_tta` | `bool` | `True` | Enable 4-rotation test-time augmentation |
+
+**Return value** — `dict`
+
+```python
+{
+    "polygons":      np.ndarray,           # shape (N, 4, 2)  wall / icon / opening bboxes
+    "types":         list[dict],           # {"type": "wall"|"icon", "class": int, ...}
+    "room_polygons": list[Polygon],        # shapely Polygon objects per room
+    "room_types":    list[dict],           # {"type": "room", "class": int}
+}
+```
+
+**Class indices**
+
+| Index | Room class | Index | Icon class |
+|-------|-----------|-------|-----------|
+| 0 | Background | 0 | Empty |
+| 1 | Outdoor | 1 | Window |
+| 2 | Wall | 2 | Door |
+| 3 | Kitchen | 3 | Closet |
+| 4 | Living Room | 4 | Electrical Appliance |
+| 5 | Bedroom | 5 | Toilet |
+| 6 | Bath | 6 | Sink |
+| 7 | Hallway | 7 | Sauna Bench |
+| 8 | Railing | 8 | Fire Place |
+| 9 | Storage | 9 | Bathtub |
+| 10 | Garage | 10 | Chimney |
+| 11 | Other | | |
+
+### Quick CLI smoke-test
+
+```bash
+python inference.py model_best_val_loss_var.pkl path/to/floorplan.png
+```
+
+### Web application integration
+
+```python
+# At server startup — load once, reuse for every request
+from inference import load_model, predict_floorplan
+from PIL import Image
+
+model = load_model("model_best_val_loss_var.pkl")
+
+# Inside your request handler (e.g. Flask / FastAPI)
+def handle_upload(file_bytes):
+    import io
+    img = Image.open(io.BytesIO(file_bytes))
+    result = predict_floorplan(model, img)
+
+    # Serialise for JSON response
+    return {
+        "polygons":   result["polygons"].tolist(),
+        "types":      result["types"],
+        "room_types": result["room_types"],
+        # room_polygons are shapely objects — convert as needed
+        "rooms": [
+            {"class": rt["class"], "coords": list(rp.exterior.coords)}
+            for rp, rt in zip(result["room_polygons"], result["room_types"])
+        ],
+    }
+```
