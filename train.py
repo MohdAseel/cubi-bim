@@ -34,6 +34,8 @@ import matplotlib.pyplot as plt
 def train(args, log_dir, writer, logger):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Training on device: {device}")
+    use_amp = (device.type == 'cuda') and (not args.disable_amp)
+    scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
 
     with open(log_dir+'args.json', 'w') as out:
         json.dump(vars(args), out, indent=4)
@@ -59,9 +61,10 @@ def train(args, log_dir, writer, logger):
                            augmentations=DictToTensor(), lmdb_folder='../cubi_lmdb/')
 
     if args.test:
-        logger.info('Test mode enabled: using only first 100 samples from train and val splits.')
-        train_set = data.Subset(train_set, list(range(min(100, len(train_set)))))
-        val_set = data.Subset(val_set, list(range(min(100, len(val_set)))))
+        test_samples = max(1, int(args.test_samples))
+        logger.info(f'Test mode enabled: using first {test_samples} samples from train and val splits.')
+        train_set = data.Subset(train_set, list(range(min(test_samples, len(train_set)))))
+        val_set = data.Subset(val_set, list(range(min(test_samples, len(val_set)))))
 
     if args.debug:
         num_workers = 0
@@ -74,7 +77,12 @@ def train(args, log_dir, writer, logger):
     else:
         num_workers = args.num_workers
 
-    trainloader = data.DataLoader(train_set, batch_size=args.batch_size,
+    effective_batch_size = args.batch_size
+    if device.type == 'cuda' and args.batch_size > args.max_cuda_batch_size:
+        effective_batch_size = args.max_cuda_batch_size
+        logger.info(f"CUDA memory guard: batch size reduced from {args.batch_size} to {effective_batch_size}.")
+
+    trainloader = data.DataLoader(train_set, batch_size=effective_batch_size,
                                   num_workers=num_workers, shuffle=True, pin_memory=torch.cuda.is_available())
     valloader = data.DataLoader(val_set, batch_size=1,
                                 num_workers=num_workers, pin_memory=torch.cuda.is_available())
@@ -104,10 +112,12 @@ def train(args, log_dir, writer, logger):
     model.to(device)
     criterion.to(device)
 
-    # Drawing graph for TensorBoard
-    dummy = torch.zeros((2, 3, args.image_size, args.image_size)).to(device)
-    model(dummy)
-    writer.add_graph(model, dummy)
+    # Drawing graph for TensorBoard can consume significant GPU memory.
+    if args.log_graph:
+        with torch.no_grad():
+            dummy = torch.zeros((1, 3, args.image_size, args.image_size)).to(device)
+            model(dummy)
+            writer.add_graph(model, dummy)
 
     params = [{'params': model.parameters(), 'lr': args.l_rate},
               {'params': criterion.parameters(), 'lr': args.l_rate}]
@@ -162,17 +172,18 @@ def train(args, log_dir, writer, logger):
             images = samples['image'].to(device, non_blocking=True)
             labels = samples['label'].to(device, non_blocking=True)
 
-            outputs = model(images)
-
-            loss = criterion(outputs, labels)
+            with torch.amp.autocast('cuda', enabled=use_amp):
+                outputs = model(images)
+                loss = criterion(outputs, labels)
             lossess.append(loss.item())
             losses = pd.concat([losses, criterion.get_loss()], ignore_index=True)
             variances = pd.concat([variances, criterion.get_var()], ignore_index=True)
             ss = pd.concat([ss, criterion.get_s()], ignore_index=True)
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
         avg_loss = np.mean(lossess)
         loss = losses.mean()
@@ -201,9 +212,10 @@ def train(args, log_dir, writer, logger):
                 images_val = samples_val['image'].to(device, non_blocking=True)
                 labels_val = samples_val['label'].to(device, non_blocking=True)
 
-                outputs = model(images_val)
-                labels_val = F.interpolate(labels_val, size=outputs.shape[2:], mode='bilinear', align_corners=False)
-                loss = criterion(outputs, labels_val)
+                with torch.amp.autocast('cuda', enabled=use_amp):
+                    outputs = model(images_val)
+                    labels_val = F.interpolate(labels_val, size=outputs.shape[2:], mode='bilinear', align_corners=False)
+                    loss = criterion(outputs, labels_val)
 
                 room_pred = outputs[0, input_slice[0]:input_slice[0]+input_slice[1]].argmax(0).data.cpu().numpy()
                 room_gt = labels_val[0, input_slice[0]].data.cpu().numpy()
@@ -383,6 +395,8 @@ if __name__ == '__main__':
                         help='# of the epochs')
     parser.add_argument('--batch-size', nargs='?', type=int, default=26,
                         help='Batch Size')
+    parser.add_argument('--max-cuda-batch-size', nargs='?', type=int, default=4,
+                        help='Safety cap for batch size when training on CUDA')
     parser.add_argument('--image-size', nargs='?', type=int, default=256,
                         help='Image size in training')
     parser.add_argument('--l-rate', nargs='?', type=float, default=1e-3,
@@ -416,7 +430,13 @@ if __name__ == '__main__':
     parser.add_argument('--num-workers', nargs='?', type=int, default=8,
                         help='DataLoader workers (auto-forced to 0 on Windows+CUDA)')
     parser.add_argument('--test', action='store_true',
-                        help='Use only first 100 images for quick testing')
+                        help='Enable quick test mode with subset sampling')
+    parser.add_argument('--test-samples', nargs='?', type=int, default=500,
+                        help='Number of samples to use per split when --test is enabled')
+    parser.add_argument('--disable-amp', action='store_true',
+                        help='Disable mixed precision (AMP) on CUDA')
+    parser.add_argument('--log-graph', action='store_true',
+                        help='Log model graph to TensorBoard (disabled by default to save GPU memory)')
     args = parser.parse_args()
 
     log_dir = args.log_path + '/' + time_stamp + '/'

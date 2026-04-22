@@ -50,7 +50,10 @@ class FloorplanSVG(Dataset):
             self.is_transform = False
 
         # Load txt file to list
-        self.folders = genfromtxt(data_folder + data_file, dtype='str')
+        self.folders = np.atleast_1d(genfromtxt(data_folder + data_file, dtype='str'))
+
+        if format == 'lmdb':
+            self._filter_folders_with_existing_lmdb_keys()
 
     def __len__(self):
         """__len__"""
@@ -123,6 +126,27 @@ class FloorplanSVG(Dataset):
 
         sample = pickle.loads(data)
         return sample
+
+    def _filter_folders_with_existing_lmdb_keys(self):
+        lmdb_path = os.path.abspath(os.path.join(self.data_folder, self.lmdb_folder))
+        if lmdb_path not in FloorplanSVG._LMDB_ENVS:
+            FloorplanSVG._LMDB_ENVS[lmdb_path] = lmdb.open(
+                lmdb_path, readonly=True,
+                max_readers=8, lock=False,
+                readahead=True, meminit=False
+            )
+        self.lmdb = FloorplanSVG._LMDB_ENVS[lmdb_path]
+
+        filtered = []
+        with self.lmdb.begin(write=False) as txn:
+            for folder in self.folders:
+                if txn.get(str(folder).encode()) is not None:
+                    filtered.append(folder)
+
+        removed = len(self.folders) - len(filtered)
+        if removed > 0:
+            print(f"[WARN] Removed {removed} entries missing from LMDB at {lmdb_path}")
+        self.folders = np.array(filtered, dtype=str)
 
     def transform(self, sample):
         fplan = sample['image']
