@@ -8,6 +8,92 @@ function hexAlpha(hex, opacity) {
   return `rgba(${r},${g},${b},${opacity})`;
 }
 
+console.log("CubiCasa: Initializing canvas extensions...");
+
+// ── Labels on Canvas ──────────────────────────────────────────────────────────
+// Override Polygon rendering to draw the label text inside the shape
+// We do this globally before any objects are instantiated.
+fabric.Polygon.prototype._render = (function(render) {
+  return function(ctx) {
+    render.call(this, ctx); // Draw the shape first
+    if (!this.data || !this.data.label) return;
+
+    ctx.save();
+
+    // ── Compute available space inside the polygon ──────────────────────────
+    const pts = this.points;
+    const xs  = pts.map(p => p.x - this.pathOffset.x);
+    const ys  = pts.map(p => p.y - this.pathOffset.y);
+    const polyW = Math.max(...xs) - Math.min(...xs);
+    const polyH = Math.max(...ys) - Math.min(...ys);
+    const shortSide = Math.min(polyW, polyH);
+
+    // ── Font size: 18% of short side, clamped 8–16 px (canvas units) ───────
+    const fontSize = Math.max(8, Math.min(16, shortSide * 0.18));
+    ctx.font = `bold ${fontSize}px 'Segoe UI', Roboto, sans-serif`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+
+    // ── Split label into lines that fit ────────────────────────────────────
+    const label   = this.data.label;
+    const maxW    = polyW * 0.85;
+    const words   = label.split(' ');
+    const lines   = [];
+    let current   = '';
+    for (const word of words) {
+      const test = current ? `${current} ${word}` : word;
+      if (ctx.measureText(test).width <= maxW || !current) {
+        current = test;
+      } else {
+        lines.push(current);
+        current = word;
+      }
+    }
+    if (current) lines.push(current);
+
+    // ── Skip if text still too wide (tiny polygon) ─────────────────────────
+    const maxLineW = Math.max(...lines.map(l => ctx.measureText(l).width));
+    if (maxLineW > polyW || lines.length * fontSize > polyH * 0.9) {
+      ctx.restore();
+      return;
+    }
+
+    // ── Draw pill background ───────────────────────────────────────────────
+    const lineH   = fontSize * 1.35;
+    const totalH  = lines.length * lineH;
+    const padX    = fontSize * 0.55;
+    const padY    = fontSize * 0.3;
+    const pillW   = maxLineW + padX * 2;
+    const pillH   = totalH   + padY * 2;
+    const rx      = Math.min(pillW / 2, fontSize * 0.6);
+    const px      = -pillW / 2;
+    const py      = -pillH / 2;
+
+    ctx.beginPath();
+    ctx.moveTo(px + rx, py);
+    ctx.lineTo(px + pillW - rx, py);
+    ctx.quadraticCurveTo(px + pillW, py, px + pillW, py + rx);
+    ctx.lineTo(px + pillW, py + pillH - rx);
+    ctx.quadraticCurveTo(px + pillW, py + pillH, px + pillW - rx, py + pillH);
+    ctx.lineTo(px + rx, py + pillH);
+    ctx.quadraticCurveTo(px, py + pillH, px, py + pillH - rx);
+    ctx.lineTo(px, py + rx);
+    ctx.quadraticCurveTo(px, py, px + rx, py);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+    ctx.fill();
+
+    // ── Draw text lines ────────────────────────────────────────────────────
+    ctx.fillStyle = '#ffffff';
+    const startY  = -(lines.length - 1) * lineH / 2;
+    lines.forEach((line, i) => {
+      ctx.fillText(line, 0, startY + i * lineH);
+    });
+
+    ctx.restore();
+  };
+})(fabric.Polygon.prototype._render);
+
 // ── State ──────────────────────────────────────────────────────────────────────
 const S = {
   elements:  [],   // [{id, vertices:[[x,y]...], type, class, label, color, opacity, strokeWidth}]
@@ -18,6 +104,7 @@ const S = {
   imgOffY:   0,
   activeEntry: null,
   history:   [],   // undo stack [{elements:[], rooms:[]}]
+  redoHistory: [], // redo stack
   showElements: true,
   showRooms:    true,
   showImage:    true,
@@ -200,14 +287,80 @@ function pushHistory() {
   };
   S.history.push(snap);
   if (S.history.length > 50) S.history.shift();
+  S.redoHistory = []; // Any new edit clears redo history
 }
 function stripObj(e) { const c = { ...e }; delete c._obj; return c; }
 
+const TARGET_SIZE = 512;
+
+// ── Preprocessing ─────────────────────────────────────────────────────────────
+
+/**
+ * Samples the edges of the image bitmap to determine a suitable background 
+ * color for padding (e.g., white for most floorplans).
+ */
+function detectBackgroundColor(bitmap) {
+  const s = 16;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = s;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bitmap, 0, 0, s, s);
+  
+  const data = ctx.getImageData(0, 0, s, s).data;
+  const samples = [[0,0], [s-1,0], [0,s-1], [s-1,s-1], [s/2,0], [0,s/2]];
+  
+  let r=0, g=0, b=0;
+  samples.forEach(([x, y]) => {
+    const i = (Math.floor(y) * s + Math.floor(x)) * 4;
+    r += data[i]; g += data[i+1]; b += data[i+2];
+  });
+  
+  const n = samples.length;
+  return `rgb(${Math.round(r/n)}, ${Math.round(g/n)}, ${Math.round(b/n)})`;
+}
+
+/**
+ * Resizes the longest side of the image to 512px and pads it to 512x512.
+ * Uses intelligent background color detection for padding.
+ */
+async function preprocessForModel(file) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement('canvas');
+    canvas.width  = TARGET_SIZE;
+    canvas.height = TARGET_SIZE;
+    const ctx = canvas.getContext('2d');
+
+    // 1. Detect background color from the edges
+    const bgColor = detectBackgroundColor(bitmap);
+
+    // 2. Fill with detected color (padding)
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, TARGET_SIZE, TARGET_SIZE);
+
+    const w = bitmap.width;
+    const h = bitmap.height;
+    const longSide = Math.max(w, h);
+    const scale = TARGET_SIZE / longSide;
+    const nw = Math.round(w * scale);
+    const nh = Math.round(h * scale);
+
+    // 3. Draw image resized at (0,0) (top-left placement, matching inference.py)
+    ctx.drawImage(bitmap, 0, 0, nw, nh);
+    bitmap.close();
+
+    return new Promise(resolve => {
+      canvas.toBlob(blob => resolve({ blob, width: nw, height: nh }), 'image/jpeg', 0.9);
+    });
+  } catch (err) {
+    throw new Error('Failed to preprocess image: ' + err.message);
+  }
+}
+
 // ── Upload + inference ─────────────────────────────────────────────────────────
-document.getElementById('file-input').addEventListener('change', async e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  e.target.value = '';
+
+async function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
 
   document.getElementById('hint').classList.add('hidden');
   document.getElementById('loading').classList.remove('hidden');
@@ -221,6 +374,7 @@ document.getElementById('file-input').addEventListener('change', async e => {
       S.elements = [];
       S.rooms    = [];
       S.history  = [];
+      S.redoHistory = [];
       clearPanel();
 
       const origW = img.width;
@@ -239,9 +393,9 @@ document.getElementById('file-input').addEventListener('change', async e => {
         hasBorders: false, hasControls: false,
       });
 
-      // scale: (model 512-space px) → canvas px
-      // inference resizes longest side to 512
-      const resizeFactor = 512 / longSide;
+      // scale: (model-space px) → canvas px
+      // inference operates in a TARGET_SIZE longest-side space
+      const resizeFactor = TARGET_SIZE / longSide;
       S.polyScale = fitScale / resizeFactor;
       S.imgOffX   = imgLeft;
       S.imgOffY   = imgTop;
@@ -253,17 +407,21 @@ document.getElementById('file-input').addEventListener('change', async e => {
     }, { crossOrigin: null });
   });
 
-  // 2. Call backend
-  document.getElementById('status-text').textContent = 'Running inference…';
-  const form = new FormData();
-  form.append('image', file);
-
+  // 2. Preprocess and Call backend
   let data;
   try {
+    document.getElementById('status-text').textContent = 'Preprocessing image…';
+    const preprocessed = await preprocessForModel(file);
+
+    document.getElementById('status-text').textContent = 'Running inference…';
+    const form = new FormData();
+    form.append('image', preprocessed.blob, 'preprocessed.jpg');
+
     const resp = await fetch('/predict', { method: 'POST', body: form });
     if (!resp.ok) throw new Error(await resp.text());
     data = await resp.json();
   } catch (err) {
+    console.error(err);
     document.getElementById('status-text').textContent = `Error: ${err.message}`;
     document.getElementById('loading').classList.add('hidden');
     return;
@@ -280,6 +438,31 @@ document.getElementById('file-input').addEventListener('change', async e => {
   S.rooms    = data.rooms;
 
   renderPolygons();
+}
+
+document.getElementById('file-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) {
+    handleFile(file);
+    e.target.value = '';
+  }
+});
+
+// Drag & Drop
+const wrap = document.getElementById('canvas-wrap');
+wrap.addEventListener('dragover', e => {
+  e.preventDefault();
+  wrap.classList.add('drag-over');
+});
+wrap.addEventListener('dragleave', e => {
+  e.preventDefault();
+  wrap.classList.remove('drag-over');
+});
+wrap.addEventListener('drop', e => {
+  e.preventDefault();
+  wrap.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
 });
 
 // ── Fabric selection events ────────────────────────────────────────────────────
@@ -370,6 +553,11 @@ function populatePanel(obj) {
     'Shift+Click another polygon to compare.';
 }
 
+  // relative position info (reset to default)
+  document.getElementById('rel-pos-info').textContent =
+    'Shift+Click another polygon to compare.';
+}
+
 function refreshTransformFields(e) {
   const b = bbox(e.vertices);
   document.getElementById('p-x').value   = b.minX.toFixed(1);
@@ -437,6 +625,73 @@ function applyAppearance() {
     fc.renderAll();
   }
 }
+
+// ── Hover Tooltip ──────────────────────────────────────────────────────────────
+
+/**
+ * Shoelace formula to compute polygon area from vertices array [[x,y], ...].
+ */
+function polyArea(verts) {
+  let area = 0;
+  const n = verts.length;
+  for (let i = 0; i < n; i++) {
+    const [x1, y1] = verts[i];
+    const [x2, y2] = verts[(i + 1) % n];
+    area += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(area / 2);
+}
+
+fc.on('mouse:over', e => {
+  const obj = e.target;
+  if (!obj || !obj.data) return;
+
+  const entry = obj.data;
+  const b   = bbox(entry.vertices);
+  const w   = (b.maxX - b.minX).toFixed(1);
+  const h   = (b.maxY - b.minY).toFixed(1);
+  const area  = polyArea(entry.vertices).toFixed(1);
+  const verts = entry.vertices.length;
+  const typeClass = entry.type || 'unknown';
+
+  // Badge color class
+  const badgeMap = { room: 'room', icon: 'icon', wall: 'wall' };
+  const badgeCls = badgeMap[typeClass] || '';
+
+  const tt = document.getElementById('tooltip');
+  tt.innerHTML = `
+    <div class="tt-title">${entry.label || 'Polygon'}</div>
+    <span class="tt-badge ${badgeCls}">${typeClass}</span>
+    <div class="tt-grid">
+      <span class="tt-key">Class</span><span class="tt-val">${entry.class ?? '—'}</span>
+      <span class="tt-key">Width</span><span class="tt-val">${w} px</span>
+      <span class="tt-key">Height</span><span class="tt-val">${h} px</span>
+      <span class="tt-key">Area</span><span class="tt-val">${area} px²</span>
+      <span class="tt-key">Vertices</span><span class="tt-val">${verts}</span>
+    </div>
+  `;
+  tt.classList.remove('hidden');
+});
+
+fc.on('mouse:move', e => {
+  const tt = document.getElementById('tooltip');
+  if (tt.classList.contains('hidden')) return;
+  // Keep tooltip inside the viewport
+  const tw  = tt.offsetWidth;
+  const th  = tt.offsetHeight;
+  const vw  = window.innerWidth;
+  const vh  = window.innerHeight;
+  let lx = e.e.clientX + 18;
+  let ly = e.e.clientY + 14;
+  if (lx + tw > vw) lx = e.e.clientX - tw - 10;
+  if (ly + th > vh) ly = e.e.clientY - th - 10;
+  tt.style.left = lx + 'px';
+  tt.style.top  = ly + 'px';
+});
+
+fc.on('mouse:out', () => {
+  document.getElementById('tooltip').classList.add('hidden');
+});
 
 document.getElementById('p-color').addEventListener('input', applyAppearance);
 document.getElementById('p-opacity').addEventListener('input', applyAppearance);
@@ -572,9 +827,17 @@ document.getElementById('btn-delete').addEventListener('click', () => {
   renderLayers();
 });
 
-// ── Undo ──────────────────────────────────────────────────────────────────────
+// ── Undo / Redo ──────────────────────────────────────────────────────────────
+function getSnap() {
+  return {
+    elements: JSON.parse(JSON.stringify(S.elements.map(stripObj))),
+    rooms:    JSON.parse(JSON.stringify(S.rooms.map(stripObj))),
+  };
+}
+
 function performUndo() {
   if (S.history.length === 0) return;
+  S.redoHistory.push(getSnap());
   const snap = S.history.pop();
   S.elements = snap.elements;
   S.rooms    = snap.rooms;
@@ -582,14 +845,35 @@ function performUndo() {
   renderPolygons();
 }
 
+function performRedo() {
+  if (S.redoHistory.length === 0) return;
+  S.history.push(getSnap());
+  const snap = S.redoHistory.pop();
+  S.elements = snap.elements;
+  S.rooms    = snap.rooms;
+  clearPanel();
+  renderPolygons();
+}
+
 document.getElementById('btn-undo').addEventListener('click', performUndo);
+document.getElementById('btn-redo').addEventListener('click', performRedo);
 
 document.addEventListener('keydown', ev => {
-  if ((ev.ctrlKey || ev.metaKey) && ev.key === 'z' && !ev.shiftKey) {
+  const isZ = ev.key.toLowerCase() === 'z';
+  const isY = ev.key.toLowerCase() === 'y';
+  const ctrl = ev.ctrlKey || ev.metaKey;
+  const shift = ev.shiftKey;
+
+  if (ctrl && (isZ || isY)) {
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     ev.preventDefault();
-    performUndo();
+
+    if (isY || (isZ && shift)) {
+      performRedo();
+    } else if (isZ) {
+      performUndo();
+    }
   }
 });
 

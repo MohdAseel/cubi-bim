@@ -7,5 +7,5 @@ if __name__ == "__main__":
         "backend:app",
         host="127.0.0.1",
         port=4753,
-        reload=False,
+        reload=True,
     )
