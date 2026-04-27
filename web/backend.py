@@ -20,9 +20,9 @@ from inference import TARGET_SIZE, load_model, predict_floorplan
 
 # ── Label / colour tables ──────────────────────────────────────────────────────
 ROOM_LABELS = [
-    "Background", "Outdoor", "Wall", "Kitchen", "Living Room",
-    "Bedroom", "Bathroom", "Entry/Corridor", "Railing", "Storage",
-    "Garage", "Undefined",
+    "background", "outdoor", "wall", "kitchen", "livingroom",
+    "bedroom", "bath", "entry", "railing", "storage",
+    "garage", "room",
 ]
 ROOM_COLORS = [
     "#808080", "#90EE90", "#8B4513", "#FFD700", "#87CEEB",
@@ -30,8 +30,8 @@ ROOM_COLORS = [
     "#708090", "#A9A9A9",
 ]
 ICON_LABELS = [
-    "No Icon", "Window", "Door", "Closet", "Electrical Appliance",
-    "Toilet", "Sink", "Sauna Bench", "Fireplace", "Bathtub", "Chimney",
+    "noicon", "window", "door", "closet", "appliance",
+    "toilet", "sink", "saunabench", "fireplace", "bathtub", "chimney",
 ]
 ICON_COLORS = [
     "#FFFFFF", "#4169E1", "#8B0000", "#9370DB", "#FF8C00",
