@@ -25,9 +25,22 @@ data/cubicasa5k/cubicasa5k/high_quality_architectural/
 data/cubicasa5k/cubicasa5k/colorful/
 data/cubicasa5k/cubicasa5k/*.txt
 data/cubicasa5k/cubicasa5k/
+data/hackathon/
+hackathon_dataset_1/
 *.zip
 *.tar.gz
 *.tar.bz2
+
+# ── Images & vector graphics (datasets, debug dumps, samples) ───────────────────
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+*.tif
+*.tiff
+*.webp
+*.svg
 
 # ── LMDB databases (generated, ~105 GB) ────────────────────────────────────────
 data/cubicasa5k/cubi_lmdb/
@@ -72,6 +85,9 @@ $RECYCLE.BIN/
 
 # Linux
 *~
+
+# ── Claude Code local settings ──────────────────────────────────────────────────
+.claude/
 
 # ── IDE / editor ────────────────────────────────────────────────────────────────
 .vscode/
