@@ -1,73 +1,93 @@
-# CubiCasa5K: A Dataset and an Improved Multi-Task Model for Floorplan Image Analysis
+# Floorplan Analysis Pipeline
 
-Paper: [CubiCasa5K: A Dataset and an Improved Multi-Task Model for Floorplan Image Analysis](https://arxiv.org/abs/1904.01920v1)
+This repository provides a complete deep learning pipeline for transforming raster floorplan images into structured vector data. It uses a stacked hourglass neural network to perform multi-task semantic segmentation and keypoint detection, followed by a post-processing stage to extract vector graphics.
 
-## Multi-Task Model
-The model uses the neural network architecture presented in [Raster-to-Vector: Revisiting Floorplan Transformation](https://github.com/art-programmer/FloorplanTransformation) [1]. The pre- and post-processing parts are modified to suit our dataset, but otherwise the pipeline follows the torch implementation of [1] as much as possible. Our model utilizes the multi-task uncertainty loss function presented in [Multi-Task Learning Using Uncertainty to Weigh Losses for Scene Geometry and Semantics](https://arxiv.org/abs/1705.07115). An example of our trained model's prediction can be found in the samples.ipynb file.
+The original research paper for this work is [CubiCasa5K: A Dataset and an Improved Multi-Task Model for Floorplan Image Analysis](https://arxiv.org/abs/1904.01920v1).
 
-## Dataset
-CubiCasa5K is a large-scale floorplan image dataset containing 5000 samples annotated into over 80 floorplan object categories. The dataset annotations are performed in a dense and versatile manner by using polygons for separating the different objects.
+## End-to-End Pipeline
 
-You can download the dataset from [Kaggle](https://www.kaggle.com/datasets/qmarva/cubicasa5k) or [Zenodo](https://zenodo.org/record/2613548).
+The process is broken down into several key stages, managed by a series of Python scripts.
 
-A helper script is provided to download via Kaggle API:
-```bash
-python download_dataset.py
-```
+### 1. Data Preparation
+
+Before training, the CubiCasa5K dataset must be downloaded and converted into an efficient format for rapid access.
+
+-   **Download**: The `download_dataset.py` script automates fetching the dataset using the Kaggle API.
+-   **Database Creation**: The `create_lmdb.py` script processes the raw image and annotation files into a single, large **LMDB (Lightning Memory-Mapped Database)** file. This binary format stores pre-processed images, segmentation masks, and heatmap coordinates, which dramatically speeds up data loading during training by avoiding repeated parsing of SVG and image files.
+
+    ```bash
+    # Download the dataset first
+    python download_dataset.py
+
+    # Create LMDB databases for training, validation, and test splits
+    python create_lmdb.py --txt train.txt
+    python create_lmdb.py --txt val.txt
+    python create_lmdb.py --txt test.txt
+    ```
+
+### 2. Model Training
+
+The core training logic is handled by `train.py`.
+
+-   **Data Augmentation**: During training, `floortrans/loaders/augmentations.py` applies several on-the-fly transformations to the data to improve model robustness, including random cropping, resizing, rotations, and color jitter.
+-   **Training Loop**: The script loads data from the LMDB, feeds it to the model, and computes the loss. It uses the **Adam optimizer** and a learning rate scheduler (`ReduceLROnPlateau`) to adjust the learning rate based on validation performance.
+-   **Logging**: Training progress, including losses, variances, and validation metrics, is logged to TensorBoard in the `runs_cubi/` directory.
+
+    ```bash
+    # Start training with default parameters
+    python train.py
+
+    # Monitor progress
+    tensorboard --logdir runs_cubi/
+    ```
+
+### 3. Inference and Vectorization
+
+The `inference.py` script provides the full raster-to-vector pipeline, converting a raw floorplan image into a structured set of polygons. An example of this is demonstrated in `samples.ipynb`.
+
+1.  **Image Preprocessing**: The input image is resized so its longest side is 512 pixels, then padded to a 512x512 square and normalized.
+2.  **Model Inference**: The pre-trained model predicts a 44-channel output tensor. To improve accuracy, **Test-Time Augmentation (TTA)** is used by default: the image is rotated four times (0°, 90°, 180°, 270°), and the model's predictions are averaged.
+3.  **Output Splitting**: The 44-channel tensor is split into three parts:
+    *   **Heatmaps (21 channels)**: Representing keypoints like corners and object centers.
+    *   **Room Segmentation (12 channels)**: Probabilities for each pixel belonging to a room type.
+    *   **Icon Segmentation (11 channels)**: Probabilities for each pixel belonging to an icon type.
+4.  **Post-processing & Vectorization**: The `floortrans/post_prosessing.py` script takes the raw model output and converts it into clean vector data. This involves:
+    *   Applying a softmax to the room and icon segmentation channels.
+    *   Using contour detection and polygon simplification algorithms to extract geometric boundaries for rooms, walls, and icons from the segmentation maps and heatmaps.
+
+## Model Architecture
+
+The core of the pipeline is a **stacked hourglass neural network**, a deep learning architecture originally designed for human pose estimation and adapted here for floorplan feature extraction. This model is implemented in PyTorch in `floortrans/models/hg_furukawa_original.py`.
+
+### Key Architectural Features:
+
+1.  **Stacked Hourglass Modules**: The network is built from multiple "hourglass" modules stacked sequentially. Each module is a self-contained encoder-decoder that refines the feature maps from the previous one. This repeated process of downsampling and upsampling allows the model to learn and integrate features at multiple scales, which is crucial for identifying both large room areas and small icon details.
+
+2.  **Residual Learning**: Within each hourglass module, residual blocks (`Residual`) are used. These blocks employ skip connections that help mitigate the vanishing gradient problem in very deep networks, allowing for more effective training.
+
+3.  **Transfer Learning**: The model leverages transfer learning by initializing its weights from a pre-trained model (`model_1427.pth`). This base model, defined in `floortrans/models/model_1427.py`, is a deep residual network pre-trained on a large-scale computer vision task (likely human pose estimation). This provides a strong initial feature extractor that is then fine-tuned for floorplan analysis.
+
+4.  **Multi-Task Head**: The final layers of the network are replaced with a custom "head" to predict the different components of the floorplan, as described in the inference pipeline.
+
+### Multi-Task Learning
+
+To train these multiple outputs simultaneously, the model uses an **uncertainty-based loss function** (`floortrans.losses.UncertaintyLoss`). This approach, based on the paper ["Multi-Task Learning Using Uncertainty to Weigh Losses"](https://arxiv.org/abs/1705.07115), dynamically balances the different components of the loss. Instead of using static weights, the model learns a "variance" parameter for each task, allowing it to automatically down-weight tasks that are more uncertain or noisy, leading to more stable and effective training.
 
 ## Requirements
+
 This repository has been modernized to support **Python 3.10+** and **PyTorch 2.x** on both **CPU** and **CUDA** devices.
 
 Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
-If you want to use the Dockerfile you need to have docker and [nvidia-docker2](https://github.com/NVIDIA/nvidia-docker) installed. We use pre-built image [anibali/pytorch:cuda-9.0](https://github.com/anibali/docker-pytorch) as a starting point and install other required libraries using pip. To create the container run in the:
-```bash
-docker build -t cubi -f Dockerfile .
-```
-To start JupyterLab in the container:
-```bash
-docker run --rm -it --init \
-  --runtime=nvidia \
-  --ipc=host \
-  --publish 1111:1111 \
-  --user="$(id -u):$(id -g)" \
-  --volume=$PWD:/app \
-  -e NVIDIA_VISIBLE_DEVICES=0 \
-  cubi jupyter-lab --port 1111 --ip 0.0.0.0 --no-browser
-```
-You can now open a terminal in [JupyterLab web interface](http://localhost:1111) to execute more commands in the container.
 
-## Database creation
-We create a LMDB database of the dataset, where we store the floorplan image, segmentation tensors and heatmap coordinates. This way we can access the data faster during training and evaluation. The downside however is that the database takes about 105G of hard drive space. There is an option to parse the SVG file on the go but it is slow for training.
-Commands to create the database:
-```bash
-python create_lmdb.py --txt val.txt
-python create_lmdb.py --txt test.txt
-python create_lmdb.py --txt train.txt
-```
-
-## Train
-```bash
-python train.py
-```
-Different training options can be found in the script file. Tensorboard is not included in the docker container. You need to run it outside and point it to cubi_runs/ folder. For each run a new folder is created with a timestamp as the folder name.
-```bash
-tensorboard --logdir runs_cubi/
-```
 ## Evaluation
 Our model weights file can be downloaded [here](https://drive.google.com/file/d/1gRB7ez1e4H7a9Y09lLqRuna0luZO5VRK/view?usp=sharing). Once the weights file is in the project folder evaluation can be done. Also you can run the jupyter notebook file to see how the model is performing for different floorplans.
 ```bash
 python eval.py --weights model_best_val_loss_var.pkl
 ```
 Additional option for evaluation can be found in the script file. The results can be found in runs_cubi/ folder. 
-
-## Todo
-- Modify create_lmdb.py to save files as uint8 (now using float32 which is the main reason why the lmdb file gets as big as over 100 gbytes).
-- Modify augmentations.py to operate with numpy arrays (the reason why it currently utilizes torch tensors is the fact that in our earlier version we applied augmentations to heatmap tensors and not to heatmap dicts which is the correct way to do it)
-
----
 
 ## Inference / Backend API
 
